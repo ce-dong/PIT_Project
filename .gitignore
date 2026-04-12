@@ -1,0 +1,10 @@
+.env
+.idea/
+__pycache__/
+.pytest_cache/
+
+data/logs/
+data/metadata/
+data/raw/
+
+*.pyc

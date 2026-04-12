@@ -1,0 +1,62 @@
+from __future__ import annotations
+
+import os
+from dataclasses import dataclass
+from datetime import date, timedelta
+from pathlib import Path
+
+from dotenv import dotenv_values
+
+
+@dataclass(frozen=True)
+class AppConfig:
+    project_root: Path
+    data_root: Path
+    raw_data_root: Path
+    metadata_root: Path
+    log_root: Path
+    env_file: Path
+    tushare_token: str
+    initial_history_start: str
+    calendar_start_date: str
+    calendar_future_days: int
+    daily_lookback_trade_days: int
+    adj_factor_lookback_trade_days: int
+    request_sleep_seconds: float
+    retry_attempts: int
+    calendar_exchange: str
+
+    @classmethod
+    def load(cls, project_root: Path | None = None) -> "AppConfig":
+        root = (project_root or Path.cwd()).resolve()
+        env_file = root / ".env"
+        env_values = dotenv_values(env_file) if env_file.exists() else {}
+        token = env_values.get("TUSHARE_TOKEN") or os.getenv("TUSHARE_TOKEN")
+        if not token:
+            raise RuntimeError("Missing TUSHARE_TOKEN. Add it to .env or the environment.")
+
+        return cls(
+            project_root=root,
+            data_root=root / "data",
+            raw_data_root=root / "data" / "raw",
+            metadata_root=root / "data" / "metadata",
+            log_root=root / "data" / "logs",
+            env_file=env_file,
+            tushare_token=token,
+            initial_history_start=os.getenv("PIT_HISTORY_START", "20150101"),
+            calendar_start_date=os.getenv("PIT_CALENDAR_START", "20000101"),
+            calendar_future_days=int(os.getenv("PIT_CALENDAR_FUTURE_DAYS", "366")),
+            daily_lookback_trade_days=int(os.getenv("PIT_DAILY_LOOKBACK_TRADE_DAYS", "20")),
+            adj_factor_lookback_trade_days=int(os.getenv("PIT_ADJ_FACTOR_LOOKBACK_TRADE_DAYS", "60")),
+            request_sleep_seconds=float(os.getenv("PIT_REQUEST_SLEEP_SECONDS", "0.3")),
+            retry_attempts=int(os.getenv("PIT_RETRY_ATTEMPTS", "3")),
+            calendar_exchange=os.getenv("PIT_CALENDAR_EXCHANGE", "SSE"),
+        )
+
+    def ensure_directories(self) -> None:
+        for path in (self.data_root, self.raw_data_root, self.metadata_root, self.log_root):
+            path.mkdir(parents=True, exist_ok=True)
+
+    def calendar_end_date(self) -> str:
+        return (date.today() + timedelta(days=self.calendar_future_days)).strftime("%Y%m%d")
+
