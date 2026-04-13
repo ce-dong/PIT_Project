@@ -23,6 +23,10 @@ class AppConfig:
     calendar_future_days: int
     daily_lookback_trade_days: int
     adj_factor_lookback_trade_days: int
+    universe_ipo_min_trade_days: int
+    universe_liquidity_window: int
+    universe_min_valid_trade_days: int
+    universe_min_median_amount: float
     request_sleep_seconds: float
     retry_attempts: int
     calendar_exchange: str
@@ -46,10 +50,14 @@ class AppConfig:
             env_file=env_file,
             tushare_token=token,
             initial_history_start=os.getenv("PIT_HISTORY_START", "20150101"),
-            calendar_start_date=os.getenv("PIT_CALENDAR_START", "20000101"),
+            calendar_start_date=os.getenv("PIT_CALENDAR_START", "19900101"),
             calendar_future_days=int(os.getenv("PIT_CALENDAR_FUTURE_DAYS", "366")),
             daily_lookback_trade_days=int(os.getenv("PIT_DAILY_LOOKBACK_TRADE_DAYS", "20")),
             adj_factor_lookback_trade_days=int(os.getenv("PIT_ADJ_FACTOR_LOOKBACK_TRADE_DAYS", "60")),
+            universe_ipo_min_trade_days=int(os.getenv("PIT_UNIVERSE_IPO_MIN_TRADE_DAYS", "120")),
+            universe_liquidity_window=int(os.getenv("PIT_UNIVERSE_LIQUIDITY_WINDOW", "20")),
+            universe_min_valid_trade_days=int(os.getenv("PIT_UNIVERSE_MIN_VALID_TRADE_DAYS", "15")),
+            universe_min_median_amount=float(os.getenv("PIT_UNIVERSE_MIN_MEDIAN_AMOUNT", "20000")),
             request_sleep_seconds=float(os.getenv("PIT_REQUEST_SLEEP_SECONDS", "0.3")),
             retry_attempts=int(os.getenv("PIT_RETRY_ATTEMPTS", "3")),
             calendar_exchange=os.getenv("PIT_CALENDAR_EXCHANGE", "SSE"),
