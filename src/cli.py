@@ -4,6 +4,8 @@ import argparse
 import json
 
 from src.adapters.tushare.client import TushareClient
+from src.builders.base import BuildContext
+from src.builders.registry import BUILDER_REGISTRY, BUILD_ORDER
 from src.config import AppConfig
 from src.storage.parquet import ParquetDataStore
 from src.storage.state import IngestionStateStore
@@ -29,10 +31,18 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Fetch metadata and Tushare rows without writing parquet output or state.",
     )
+
+    build_parser = subparsers.add_parser("build", help="Build standardized lake tables from raw data.")
+    build_parser.add_argument("table", choices=[*BUILD_ORDER, "all"], help="Derived table to build.")
+    build_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Run transformations without writing output tables.",
+    )
     return parser
 
 
-def _build_runtime() -> tuple[AppConfig, TushareClient, ParquetDataStore, IngestionStateStore]:
+def _build_runtime() -> tuple[AppConfig, TushareClient, ParquetDataStore, ParquetDataStore, IngestionStateStore]:
     config = AppConfig.load()
     config.ensure_directories()
     client = TushareClient(
@@ -40,18 +50,19 @@ def _build_runtime() -> tuple[AppConfig, TushareClient, ParquetDataStore, Ingest
         retry_attempts=config.retry_attempts,
         sleep_seconds=config.request_sleep_seconds,
     )
-    store = ParquetDataStore(config.raw_data_root)
+    raw_store = ParquetDataStore(config.raw_data_root)
+    lake_store = ParquetDataStore(config.lake_data_root)
     state_store = IngestionStateStore(config.metadata_root / "ingestion_state.json")
-    return config, client, store, state_store
+    return config, client, raw_store, lake_store, state_store
 
 
 def run_ingest(args: argparse.Namespace) -> int:
-    config, client, store, state_store = _build_runtime()
+    config, client, raw_store, _, state_store = _build_runtime()
     tables = CORE_TABLE_ORDER if args.table == "all" else [args.table]
     results = []
     for table_name in tables:
         updater_cls = UPDATER_REGISTRY[table_name]
-        updater = updater_cls(config, client, store, state_store)
+        updater = updater_cls(config, client, raw_store, state_store)
         result = updater.run(
             UpdateContext(
                 start_date=args.start_date,
@@ -66,15 +77,30 @@ def run_ingest(args: argparse.Namespace) -> int:
     return 0
 
 
+def run_build(args: argparse.Namespace) -> int:
+    config, _, raw_store, lake_store, _ = _build_runtime()
+    tables = BUILD_ORDER if args.table == "all" else [args.table]
+    results = []
+    for table_name in tables:
+        builder_cls = BUILDER_REGISTRY[table_name]
+        builder = builder_cls(config, raw_store, lake_store)
+        result = builder.run(BuildContext(dry_run=args.dry_run))
+        results.append(result)
+
+    print(json.dumps(results, indent=2, ensure_ascii=True, default=str))
+    return 0
+
+
 def main() -> int:
     parser = build_parser()
     args = parser.parse_args()
     if args.command == "ingest":
         return run_ingest(args)
+    if args.command == "build":
+        return run_build(args)
     parser.error(f"Unsupported command: {args.command}")
     return 2
 
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

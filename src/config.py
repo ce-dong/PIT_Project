@@ -13,6 +13,7 @@ class AppConfig:
     project_root: Path
     data_root: Path
     raw_data_root: Path
+    lake_data_root: Path
     metadata_root: Path
     log_root: Path
     env_file: Path
@@ -39,6 +40,7 @@ class AppConfig:
             project_root=root,
             data_root=root / "data",
             raw_data_root=root / "data" / "raw",
+            lake_data_root=root / "data" / "lake",
             metadata_root=root / "data" / "metadata",
             log_root=root / "data" / "logs",
             env_file=env_file,
@@ -54,9 +56,8 @@ class AppConfig:
         )
 
     def ensure_directories(self) -> None:
-        for path in (self.data_root, self.raw_data_root, self.metadata_root, self.log_root):
+        for path in (self.data_root, self.raw_data_root, self.lake_data_root, self.metadata_root, self.log_root):
             path.mkdir(parents=True, exist_ok=True)
 
     def calendar_end_date(self) -> str:
         return (date.today() + timedelta(days=self.calendar_future_days)).strftime("%Y%m%d")
-

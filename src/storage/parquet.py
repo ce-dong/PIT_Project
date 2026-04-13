@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import shutil
 from pathlib import Path
 
 import pandas as pd
@@ -33,17 +34,41 @@ def normalize_date_columns(df: pd.DataFrame, columns: list[str]) -> pd.DataFrame
 
 
 class ParquetDataStore:
-    def __init__(self, raw_data_root: Path) -> None:
-        self.raw_data_root = raw_data_root
-        self.raw_data_root.mkdir(parents=True, exist_ok=True)
+    def __init__(self, root: Path) -> None:
+        self.root = root
+        self.root.mkdir(parents=True, exist_ok=True)
 
     def overwrite_table(self, table_name: str, df: pd.DataFrame) -> list[str]:
         _ensure_parquet_engine()
-        table_root = self.raw_data_root / table_name
+        table_root = self.root / table_name
         table_root.mkdir(parents=True, exist_ok=True)
         output_path = table_root / "data.parquet"
         df.to_parquet(output_path, index=False)
-        return [str(output_path.relative_to(self.raw_data_root))]
+        return [str(output_path.relative_to(self.root))]
+
+    def read_table(self, table_name: str, columns: list[str] | None = None) -> pd.DataFrame:
+        table_root = self.root / table_name
+        if not table_root.exists():
+            raise FileNotFoundError(f"Table '{table_name}' does not exist under {self.root}.")
+        return pd.read_parquet(table_root, columns=columns)
+
+    def list_partition_files(self, table_name: str) -> list[Path]:
+        table_root = self.root / table_name
+        if not table_root.exists():
+            raise FileNotFoundError(f"Table '{table_name}' does not exist under {self.root}.")
+        return sorted(table_root.glob("year=*/month=*/data.parquet"))
+
+    def clear_table(self, table_name: str) -> None:
+        table_root = self.root / table_name
+        if table_root.exists():
+            shutil.rmtree(table_root)
+
+    def write_partition_file(self, table_name: str, relative_partition_path: Path, df: pd.DataFrame) -> str:
+        _ensure_parquet_engine()
+        output_path = self.root / table_name / relative_partition_path
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        df.to_parquet(output_path, index=False)
+        return str(output_path.relative_to(self.root))
 
     def upsert_by_month(
         self,
@@ -57,7 +82,7 @@ class ParquetDataStore:
         if df.empty:
             return []
 
-        table_root = self.raw_data_root / table_name
+        table_root = self.root / table_name
         table_root.mkdir(parents=True, exist_ok=True)
 
         if partition_col not in df.columns:
@@ -80,5 +105,21 @@ class ParquetDataStore:
             combined = combined.drop_duplicates(subset=primary_keys, keep="last")
             combined = combined.sort_values(primary_keys).reset_index(drop=True)
             combined.to_parquet(partition_path, index=False)
-            updated_paths.append(str(partition_path.relative_to(self.raw_data_root)))
+            updated_paths.append(str(partition_path.relative_to(self.root)))
         return updated_paths
+
+    def replace_by_month(
+        self,
+        table_name: str,
+        df: pd.DataFrame,
+        *,
+        partition_col: str,
+        primary_keys: list[str],
+    ) -> list[str]:
+        self.clear_table(table_name)
+        return self.upsert_by_month(
+            table_name,
+            df,
+            partition_col=partition_col,
+            primary_keys=primary_keys,
+        )
