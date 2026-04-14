@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pandas as pd
 
-from src.core.pit import build_monthly_snapshot_base
+from src.core.pit import build_fina_indicator_pit_table, build_monthly_snapshot_base
 
 
 def test_build_monthly_snapshot_base_uses_latest_available_market_rows():
@@ -124,3 +124,100 @@ def test_build_monthly_snapshot_base_returns_empty_schema_for_empty_universe():
     assert result.empty
     assert "price_trade_date" in result.columns
     assert "daily_basic_trade_date" in result.columns
+
+
+def test_build_fina_indicator_pit_table_maps_strict_next_trade_date():
+    raw_fina_indicator = pd.DataFrame(
+        [
+            {"ts_code": "000001.SZ", "ann_date": "20240131", "end_date": "20231231", "roe": 10.0},
+            {"ts_code": "000001.SZ", "ann_date": "20240201", "end_date": "20240331", "roe": 20.0},
+        ]
+    )
+    calendar_table = pd.DataFrame(
+        [
+            {"trade_date": "2024-01-31"},
+            {"trade_date": "2024-02-01"},
+            {"trade_date": "2024-02-02"},
+        ]
+    )
+
+    result = build_fina_indicator_pit_table(raw_fina_indicator, calendar_table)
+
+    first = result.iloc[0]
+    second = result.iloc[1]
+    assert str(first["fi_tradable_date"].date()) == "2024-02-01"
+    assert str(second["fi_tradable_date"].date()) == "2024-02-02"
+    assert first["fi_roe"] == 10.0
+
+
+def test_build_monthly_snapshot_base_joins_fina_indicator_pit_on_trade_execution_date():
+    monthly_universe = pd.DataFrame(
+        [
+            {
+                "rebalance_date": "2024-01-31",
+                "trade_execution_date": "2024-02-01",
+                "ts_code": "000001.SZ",
+                "exchange": "SZSE",
+                "market": "主板",
+                "list_date": "2023-01-02",
+                "delist_date": None,
+                "days_since_list": 250,
+                "valid_trade_days_20d": 20,
+                "median_amount_20d": 30000.0,
+                "has_price_coverage": True,
+                "is_st_flag": None,
+                "is_suspended_flag": None,
+                "is_eligible": True,
+                "exclude_reason": "",
+            },
+        ]
+    )
+    adjusted_price_panel = pd.DataFrame(
+        [
+            {"ts_code": "000001.SZ", "trade_date": "2024-01-31", "close": 10.2, "adj_close": 20.4, "amount": 32000.0, "vol": 1200.0},
+        ]
+    )
+    daily_basic = pd.DataFrame(
+        [
+            {
+                "ts_code": "000001.SZ",
+                "trade_date": "2024-01-31",
+                "total_mv": 100000.0,
+                "circ_mv": 80000.0,
+                "pb": 1.2,
+                "pe_ttm": 10.0,
+                "ps_ttm": 2.0,
+                "dv_ttm": 1.0,
+                "turnover_rate": 2.0,
+                "turnover_rate_f": 2.5,
+                "volume_ratio": 1.1,
+            },
+        ]
+    )
+    raw_fina_indicator = pd.DataFrame(
+        [
+            {"ts_code": "000001.SZ", "ann_date": "20240131", "end_date": "20231231", "roe": 10.0, "roa": 5.0},
+            {"ts_code": "000001.SZ", "ann_date": "20240201", "end_date": "20240331", "roe": 20.0, "roa": 6.0},
+        ]
+    )
+    calendar_table = pd.DataFrame(
+        [
+            {"trade_date": "2024-01-31"},
+            {"trade_date": "2024-02-01"},
+            {"trade_date": "2024-02-02"},
+        ]
+    )
+
+    result = build_monthly_snapshot_base(
+        monthly_universe,
+        adjusted_price_panel,
+        daily_basic,
+        raw_fina_indicator=raw_fina_indicator,
+        calendar_table=calendar_table,
+    )
+
+    row = result.iloc[0]
+    assert str(row["fi_tradable_date"].date()) == "2024-02-01"
+    assert str(row["fi_report_period"].date()) == "2023-12-31"
+    assert row["fi_roe"] == 10.0
+    assert row["fi_roa"] == 5.0

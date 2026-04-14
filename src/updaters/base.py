@@ -80,6 +80,24 @@ class BaseUpdater:
         open_dates = calendar.loc[calendar["is_open"] == 1, "cal_date"].tolist()
         return sorted(open_dates)
 
+    def _calculate_calendar_date_start(
+        self,
+        lookback_days: int,
+        requested_start: str | None,
+        *,
+        state_key: str,
+    ) -> str:
+        if requested_start:
+            return requested_start
+
+        last_state = self.state_store.get(self.table_name)
+        last_success_date = last_state.get(state_key)
+        if not last_success_date:
+            return self.config.initial_history_start
+
+        anchor = datetime.strptime(last_success_date, "%Y%m%d").date()
+        return (anchor - timedelta(days=max(lookback_days, 30))).strftime("%Y%m%d")
+
     def _finalize(
         self,
         *,
@@ -89,6 +107,7 @@ class BaseUpdater:
         mode: str,
         last_success_trade_date: str | None,
         dry_run: bool,
+        extra_state: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         finished_at = self._now_iso()
         result = {
@@ -101,6 +120,8 @@ class BaseUpdater:
             "finished_at": finished_at,
             "dry_run": dry_run,
         }
+        if extra_state:
+            result.update(extra_state)
         if not dry_run:
             self.state_store.mark_success(
                 self.table_name,
@@ -110,6 +131,7 @@ class BaseUpdater:
                 updated_partitions=updated_partitions,
                 mode=mode,
                 last_success_trade_date=last_success_trade_date,
+                extra_state=extra_state,
             )
         return result
 
@@ -117,4 +139,3 @@ class BaseUpdater:
         if not frames:
             return pd.DataFrame()
         return pd.concat(frames, ignore_index=True)
-

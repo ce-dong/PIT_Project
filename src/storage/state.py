@@ -29,9 +29,10 @@ class IngestionStateStore:
         updated_partitions: list[str],
         mode: str,
         last_success_trade_date: str | None = None,
+        extra_state: dict[str, Any] | None = None,
     ) -> None:
         state = self.load()
-        state[table_name] = {
+        payload = {
             "table_name": table_name,
             "status": "success",
             "started_at": started_at,
@@ -42,7 +43,9 @@ class IngestionStateStore:
             "last_success_trade_date": last_success_trade_date,
             "recorded_at": datetime.now(timezone.utc).isoformat(),
         }
+        if extra_state:
+            payload.update(extra_state)
+        state[table_name] = payload
         tmp_path = self.path.with_suffix(".tmp")
         tmp_path.write_text(json.dumps(state, indent=2, ensure_ascii=True), encoding="utf-8")
         tmp_path.replace(self.path)
-

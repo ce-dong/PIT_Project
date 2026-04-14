@@ -67,3 +67,6 @@ class TushareClient:
 
     def fetch_adj_factor(self, trade_date: str) -> pd.DataFrame:
         return self._call("adj_factor", trade_date=trade_date)
+
+    def fetch_fina_indicator(self, ts_code: str, start_date: str, end_date: str) -> pd.DataFrame:
+        return self._call("fina_indicator", ts_code=ts_code, start_date=start_date, end_date=end_date)
