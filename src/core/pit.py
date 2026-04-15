@@ -41,6 +41,14 @@ def _empty_monthly_snapshot_base() -> pd.DataFrame:
             "fi_ann_date",
             "fi_availability_date",
             "fi_tradable_date",
+            "fc_report_period",
+            "fc_ann_date",
+            "fc_availability_date",
+            "fc_tradable_date",
+            "ex_report_period",
+            "ex_ann_date",
+            "ex_availability_date",
+            "ex_tradable_date",
         ]
     )
 
@@ -107,8 +115,8 @@ def build_financial_statement_pit_table(
         return pd.DataFrame(columns=base_columns)
 
     statement = raw_statement.copy()
-    for column in ("ann_date", "f_ann_date", "end_date"):
-        if column in statement.columns:
+    for column in statement.columns:
+        if column == "end_date" or column.endswith("_date"):
             statement[column] = pd.to_datetime(statement[column], errors="coerce")
     statement = statement.dropna(subset=["ts_code", "ann_date", "end_date"]).reset_index(drop=True)
     statement["report_period"] = statement["end_date"]
@@ -201,6 +209,26 @@ def build_cashflow_pit_table(raw_cashflow: pd.DataFrame, calendar_table: pd.Data
     )
 
 
+def build_forecast_pit_table(raw_forecast: pd.DataFrame, calendar_table: pd.DataFrame) -> pd.DataFrame:
+    return build_financial_statement_pit_table(
+        raw_forecast,
+        calendar_table,
+        prefix="fc",
+        availability_source_cols=["ann_date"],
+        include_f_ann_date=False,
+    )
+
+
+def build_express_pit_table(raw_express: pd.DataFrame, calendar_table: pd.DataFrame) -> pd.DataFrame:
+    return build_financial_statement_pit_table(
+        raw_express,
+        calendar_table,
+        prefix="ex",
+        availability_source_cols=["ann_date"],
+        include_f_ann_date=False,
+    )
+
+
 def _join_financial_snapshot(
     snapshot: pd.DataFrame,
     universe: pd.DataFrame,
@@ -253,6 +281,8 @@ def build_monthly_snapshot_base(
     raw_income: pd.DataFrame | None = None,
     raw_balancesheet: pd.DataFrame | None = None,
     raw_cashflow: pd.DataFrame | None = None,
+    raw_forecast: pd.DataFrame | None = None,
+    raw_express: pd.DataFrame | None = None,
     calendar_table: pd.DataFrame | None = None,
 ) -> pd.DataFrame:
     if monthly_universe.empty:
@@ -334,6 +364,22 @@ def build_monthly_snapshot_base(
         build_pit_table=build_cashflow_pit_table,
         prefix="cf",
     )
+    snapshot = _join_financial_snapshot(
+        snapshot,
+        universe,
+        raw_forecast,
+        calendar_table,
+        build_pit_table=build_forecast_pit_table,
+        prefix="fc",
+    )
+    snapshot = _join_financial_snapshot(
+        snapshot,
+        universe,
+        raw_express,
+        calendar_table,
+        build_pit_table=build_express_pit_table,
+        prefix="ex",
+    )
 
     ordered_cols = [
         "rebalance_date",
@@ -368,7 +414,7 @@ def build_monthly_snapshot_base(
         "vol",
     ]
     financial_cols = sorted(
-        column for column in snapshot.columns if column.startswith(("fi_", "inc_", "bs_", "cf_"))
+        column for column in snapshot.columns if column.startswith(("fi_", "inc_", "bs_", "cf_", "fc_", "ex_"))
     )
     result = snapshot[[*ordered_cols, *financial_cols]].copy()
     result = result.sort_values(["rebalance_date", "ts_code"]).reset_index(drop=True)

@@ -5,7 +5,9 @@ from src.updaters.balancesheet import BalancesheetUpdater
 from src.updaters.cashflow import CashflowUpdater
 from src.updaters.daily import DailyUpdater
 from src.updaters.daily_basic import DailyBasicUpdater
+from src.updaters.express import ExpressUpdater
 from src.updaters.fina_indicator import FinaIndicatorUpdater
+from src.updaters.forecast import ForecastUpdater
 from src.updaters.income import IncomeUpdater
 from src.updaters.stock_basic import StockBasicUpdater
 from src.updaters.trade_cal import TradeCalUpdater
@@ -21,6 +23,8 @@ UPDATER_REGISTRY = {
     "income": IncomeUpdater,
     "balancesheet": BalancesheetUpdater,
     "cashflow": CashflowUpdater,
+    "forecast": ForecastUpdater,
+    "express": ExpressUpdater,
 }
 
 CORE_TABLE_ORDER = [
@@ -33,4 +37,6 @@ CORE_TABLE_ORDER = [
     "income",
     "balancesheet",
     "cashflow",
+    "forecast",
+    "express",
 ]

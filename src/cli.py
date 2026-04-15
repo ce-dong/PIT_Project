@@ -11,6 +11,7 @@ from src.storage.parquet import ParquetDataStore
 from src.storage.state import IngestionStateStore
 from src.updaters.base import UpdateContext
 from src.updaters.registry import CORE_TABLE_ORDER, UPDATER_REGISTRY
+from src.validators.core import CORE_VALIDATION_ORDER, run_core_validations
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -38,6 +39,13 @@ def build_parser() -> argparse.ArgumentParser:
         "--dry-run",
         action="store_true",
         help="Run transformations without writing output tables.",
+    )
+
+    validate_parser = subparsers.add_parser("validate", help="Run data-quality validation on core lake tables.")
+    validate_parser.add_argument(
+        "table",
+        choices=[*CORE_VALIDATION_ORDER, "all"],
+        help="Core lake table to validate.",
     )
     return parser
 
@@ -91,6 +99,15 @@ def run_build(args: argparse.Namespace) -> int:
     return 0
 
 
+def run_validate(args: argparse.Namespace) -> int:
+    config, _, _, lake_store, _ = _build_runtime()
+    tables = CORE_VALIDATION_ORDER if args.table == "all" else [args.table]
+    results = run_core_validations(config, lake_store, tables=tables)
+    print(json.dumps([result.to_dict() for result in results], indent=2, ensure_ascii=True, default=str))
+    has_error = any(result.error_count > 0 for result in results)
+    return 1 if has_error else 0
+
+
 def main() -> int:
     parser = build_parser()
     args = parser.parse_args()
@@ -98,6 +115,8 @@ def main() -> int:
         return run_ingest(args)
     if args.command == "build":
         return run_build(args)
+    if args.command == "validate":
+        return run_validate(args)
     parser.error(f"Unsupported command: {args.command}")
     return 2
 

@@ -9,3 +9,4 @@ data/metadata/
 data/raw/
 
 *.pyc
+.DS_Store

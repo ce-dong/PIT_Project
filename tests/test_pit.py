@@ -5,7 +5,9 @@ import pandas as pd
 from src.core.pit import (
     build_balancesheet_pit_table,
     build_cashflow_pit_table,
+    build_express_pit_table,
     build_fina_indicator_pit_table,
+    build_forecast_pit_table,
     build_income_pit_table,
     build_monthly_snapshot_base,
 )
@@ -369,3 +371,114 @@ def test_build_balancesheet_and_cashflow_pit_tables_use_f_ann_date():
 
     assert str(bs_result.iloc[0]["bs_tradable_date"].date()) == "2024-02-05"
     assert str(cf_result.iloc[0]["cf_tradable_date"].date()) == "2024-02-02"
+
+
+def test_build_forecast_pit_table_uses_ann_date_but_preserves_first_ann_date():
+    raw_forecast = pd.DataFrame(
+        [
+            {
+                "ts_code": "000001.SZ",
+                "ann_date": "20240228",
+                "first_ann_date": "20240220",
+                "end_date": "20240331",
+                "net_profit_min": 100.0,
+            },
+        ]
+    )
+    calendar_table = pd.DataFrame(
+        [
+            {"trade_date": "2024-02-28"},
+            {"trade_date": "2024-02-29"},
+            {"trade_date": "2024-03-01"},
+        ]
+    )
+
+    result = build_forecast_pit_table(raw_forecast, calendar_table)
+
+    row = result.iloc[0]
+    assert str(row["fc_availability_date"].date()) == "2024-02-28"
+    assert str(row["fc_tradable_date"].date()) == "2024-02-29"
+    assert str(row["fc_first_ann_date"].date()) == "2024-02-20"
+    assert row["fc_net_profit_min"] == 100.0
+
+
+def test_build_monthly_snapshot_base_joins_forecast_and_express():
+    monthly_universe = pd.DataFrame(
+        [
+            {
+                "rebalance_date": "2024-02-29",
+                "trade_execution_date": "2024-03-01",
+                "ts_code": "000001.SZ",
+                "exchange": "SZSE",
+                "market": "主板",
+                "list_date": "2023-01-02",
+                "delist_date": None,
+                "days_since_list": 270,
+                "valid_trade_days_20d": 20,
+                "median_amount_20d": 30000.0,
+                "has_price_coverage": True,
+                "is_st_flag": None,
+                "is_suspended_flag": None,
+                "is_eligible": True,
+                "exclude_reason": "",
+            },
+        ]
+    )
+    adjusted_price_panel = pd.DataFrame(
+        [
+            {"ts_code": "000001.SZ", "trade_date": "2024-02-29", "close": 10.2, "adj_close": 20.4, "amount": 32000.0, "vol": 1200.0},
+        ]
+    )
+    daily_basic = pd.DataFrame(
+        [
+            {
+                "ts_code": "000001.SZ",
+                "trade_date": "2024-02-29",
+                "total_mv": 100000.0,
+                "circ_mv": 80000.0,
+                "pb": 1.2,
+                "pe_ttm": 10.0,
+                "ps_ttm": 2.0,
+                "dv_ttm": 1.0,
+                "turnover_rate": 2.0,
+                "turnover_rate_f": 2.5,
+                "volume_ratio": 1.1,
+            },
+        ]
+    )
+    raw_forecast = pd.DataFrame(
+        [
+            {"ts_code": "000001.SZ", "ann_date": "20240228", "first_ann_date": "20240220", "end_date": "20240331", "net_profit_min": 100.0},
+            {"ts_code": "000001.SZ", "ann_date": "20240304", "first_ann_date": "20240220", "end_date": "20240331", "net_profit_min": 120.0},
+        ]
+    )
+    raw_express = pd.DataFrame(
+        [
+            {"ts_code": "000001.SZ", "ann_date": "20240228", "end_date": "20231231", "revenue": 200.0},
+        ]
+    )
+    calendar_table = pd.DataFrame(
+        [
+            {"trade_date": "2024-02-28"},
+            {"trade_date": "2024-02-29"},
+            {"trade_date": "2024-03-01"},
+            {"trade_date": "2024-03-04"},
+            {"trade_date": "2024-03-05"},
+        ]
+    )
+
+    result = build_monthly_snapshot_base(
+        monthly_universe,
+        adjusted_price_panel,
+        daily_basic,
+        raw_forecast=raw_forecast,
+        raw_express=raw_express,
+        calendar_table=calendar_table,
+    )
+
+    row = result.iloc[0]
+    assert str(row["fc_tradable_date"].date()) == "2024-02-29"
+    assert row["fc_net_profit_min"] == 100.0
+    assert str(row["fc_first_ann_date"].date()) == "2024-02-20"
+    assert str(row["ex_tradable_date"].date()) == "2024-02-29"
+    assert row["ex_revenue"] == 200.0

@@ -58,6 +58,16 @@ class MonthlySnapshotBaseBuilder(BaseBuilder):
         except FileNotFoundError:
             self.logger.info("Raw cashflow not found; building monthly_snapshot_base without cashflow PIT columns")
             cashflow = pd.DataFrame()
+        try:
+            forecast = self.raw_store.read_table("forecast")
+        except FileNotFoundError:
+            self.logger.info("Raw forecast not found; building monthly_snapshot_base without forecast PIT columns")
+            forecast = pd.DataFrame()
+        try:
+            express = self.raw_store.read_table("express")
+        except FileNotFoundError:
+            self.logger.info("Raw express not found; building monthly_snapshot_base without express PIT columns")
+            express = pd.DataFrame()
 
         monthly_snapshot_base = build_monthly_snapshot_base(
             monthly_universe,
@@ -67,6 +77,8 @@ class MonthlySnapshotBaseBuilder(BaseBuilder):
             raw_income=income,
             raw_balancesheet=balancesheet,
             raw_cashflow=cashflow,
+            raw_forecast=forecast,
+            raw_express=express,
             calendar_table=calendar_table,
         )
 

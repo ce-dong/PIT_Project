@@ -28,6 +28,12 @@ class AppConfig:
     universe_liquidity_window: int
     universe_min_valid_trade_days: int
     universe_min_median_amount: float
+    quality_market_coverage_warn_ratio: float
+    quality_market_coverage_error_ratio: float
+    quality_financial_coverage_warn_ratio: float
+    quality_financial_coverage_error_ratio: float
+    quality_event_coverage_warn_ratio: float
+    quality_event_coverage_error_ratio: float
     request_sleep_seconds: float
     retry_attempts: int
     calendar_exchange: str
@@ -60,6 +66,12 @@ class AppConfig:
             universe_liquidity_window=int(os.getenv("PIT_UNIVERSE_LIQUIDITY_WINDOW", "20")),
             universe_min_valid_trade_days=int(os.getenv("PIT_UNIVERSE_MIN_VALID_TRADE_DAYS", "15")),
             universe_min_median_amount=float(os.getenv("PIT_UNIVERSE_MIN_MEDIAN_AMOUNT", "20000")),
+            quality_market_coverage_warn_ratio=float(os.getenv("PIT_QUALITY_MARKET_COVERAGE_WARN_RATIO", "0.75")),
+            quality_market_coverage_error_ratio=float(os.getenv("PIT_QUALITY_MARKET_COVERAGE_ERROR_RATIO", "0.60")),
+            quality_financial_coverage_warn_ratio=float(os.getenv("PIT_QUALITY_FINANCIAL_COVERAGE_WARN_RATIO", "0.75")),
+            quality_financial_coverage_error_ratio=float(os.getenv("PIT_QUALITY_FINANCIAL_COVERAGE_ERROR_RATIO", "0.60")),
+            quality_event_coverage_warn_ratio=float(os.getenv("PIT_QUALITY_EVENT_COVERAGE_WARN_RATIO", "0.50")),
+            quality_event_coverage_error_ratio=float(os.getenv("PIT_QUALITY_EVENT_COVERAGE_ERROR_RATIO", "0.30")),
             request_sleep_seconds=float(os.getenv("PIT_REQUEST_SLEEP_SECONDS", "0.3")),
             retry_attempts=int(os.getenv("PIT_RETRY_ATTEMPTS", "3")),
             calendar_exchange=os.getenv("PIT_CALENDAR_EXCHANGE", "SSE"),
