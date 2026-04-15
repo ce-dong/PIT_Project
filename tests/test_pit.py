@@ -2,7 +2,13 @@ from __future__ import annotations
 
 import pandas as pd
 
-from src.core.pit import build_fina_indicator_pit_table, build_monthly_snapshot_base
+from src.core.pit import (
+    build_balancesheet_pit_table,
+    build_cashflow_pit_table,
+    build_fina_indicator_pit_table,
+    build_income_pit_table,
+    build_monthly_snapshot_base,
+)
 
 
 def test_build_monthly_snapshot_base_uses_latest_available_market_rows():
@@ -150,6 +156,28 @@ def test_build_fina_indicator_pit_table_maps_strict_next_trade_date():
     assert first["fi_roe"] == 10.0
 
 
+def test_financial_statement_pit_prefers_f_ann_date_for_availability():
+    raw_income = pd.DataFrame(
+        [
+            {"ts_code": "000001.SZ", "ann_date": "20240131", "f_ann_date": "20240202", "end_date": "20231231", "revenue": 100.0},
+        ]
+    )
+    calendar_table = pd.DataFrame(
+        [
+            {"trade_date": "2024-02-01"},
+            {"trade_date": "2024-02-02"},
+            {"trade_date": "2024-02-05"},
+        ]
+    )
+
+    result = build_income_pit_table(raw_income, calendar_table)
+
+    row = result.iloc[0]
+    assert str(row["inc_availability_date"].date()) == "2024-02-02"
+    assert str(row["inc_tradable_date"].date()) == "2024-02-05"
+    assert row["inc_revenue"] == 100.0
+
+
 def test_build_monthly_snapshot_base_joins_fina_indicator_pit_on_trade_execution_date():
     monthly_universe = pd.DataFrame(
         [
@@ -221,3 +249,123 @@ def test_build_monthly_snapshot_base_joins_fina_indicator_pit_on_trade_execution
     assert str(row["fi_report_period"].date()) == "2023-12-31"
     assert row["fi_roe"] == 10.0
     assert row["fi_roa"] == 5.0
+
+
+def test_build_monthly_snapshot_base_joins_income_balancesheet_and_cashflow():
+    monthly_universe = pd.DataFrame(
+        [
+            {
+                "rebalance_date": "2024-02-29",
+                "trade_execution_date": "2024-03-01",
+                "ts_code": "000001.SZ",
+                "exchange": "SZSE",
+                "market": "主板",
+                "list_date": "2023-01-02",
+                "delist_date": None,
+                "days_since_list": 270,
+                "valid_trade_days_20d": 20,
+                "median_amount_20d": 30000.0,
+                "has_price_coverage": True,
+                "is_st_flag": None,
+                "is_suspended_flag": None,
+                "is_eligible": True,
+                "exclude_reason": "",
+            },
+        ]
+    )
+    adjusted_price_panel = pd.DataFrame(
+        [
+            {"ts_code": "000001.SZ", "trade_date": "2024-02-29", "close": 10.2, "adj_close": 20.4, "amount": 32000.0, "vol": 1200.0},
+        ]
+    )
+    daily_basic = pd.DataFrame(
+        [
+            {
+                "ts_code": "000001.SZ",
+                "trade_date": "2024-02-29",
+                "total_mv": 100000.0,
+                "circ_mv": 80000.0,
+                "pb": 1.2,
+                "pe_ttm": 10.0,
+                "ps_ttm": 2.0,
+                "dv_ttm": 1.0,
+                "turnover_rate": 2.0,
+                "turnover_rate_f": 2.5,
+                "volume_ratio": 1.1,
+            },
+        ]
+    )
+    raw_income = pd.DataFrame(
+        [
+            {"ts_code": "000001.SZ", "ann_date": "20240220", "f_ann_date": "20240221", "end_date": "20231231", "revenue": 100.0},
+            {"ts_code": "000001.SZ", "ann_date": "20240301", "f_ann_date": "20240301", "end_date": "20240331", "revenue": 120.0},
+        ]
+    )
+    raw_balancesheet = pd.DataFrame(
+        [
+            {"ts_code": "000001.SZ", "ann_date": "20240222", "f_ann_date": "20240222", "end_date": "20231231", "total_assets": 500.0},
+        ]
+    )
+    raw_cashflow = pd.DataFrame(
+        [
+            {"ts_code": "000001.SZ", "ann_date": "20240223", "f_ann_date": "20240226", "end_date": "20231231", "n_cashflow_act": 80.0},
+        ]
+    )
+    calendar_table = pd.DataFrame(
+        [
+            {"trade_date": "2024-02-21"},
+            {"trade_date": "2024-02-22"},
+            {"trade_date": "2024-02-23"},
+            {"trade_date": "2024-02-26"},
+            {"trade_date": "2024-02-27"},
+            {"trade_date": "2024-02-28"},
+            {"trade_date": "2024-02-29"},
+            {"trade_date": "2024-03-01"},
+            {"trade_date": "2024-03-04"},
+        ]
+    )
+
+    result = build_monthly_snapshot_base(
+        monthly_universe,
+        adjusted_price_panel,
+        daily_basic,
+        raw_income=raw_income,
+        raw_balancesheet=raw_balancesheet,
+        raw_cashflow=raw_cashflow,
+        calendar_table=calendar_table,
+    )
+
+    row = result.iloc[0]
+    assert str(row["inc_report_period"].date()) == "2023-12-31"
+    assert str(row["inc_tradable_date"].date()) == "2024-02-22"
+    assert row["inc_revenue"] == 100.0
+    assert str(row["bs_tradable_date"].date()) == "2024-02-23"
+    assert row["bs_total_assets"] == 500.0
+    assert str(row["cf_tradable_date"].date()) == "2024-02-27"
+    assert row["cf_n_cashflow_act"] == 80.0
+
+
+def test_build_balancesheet_and_cashflow_pit_tables_use_f_ann_date():
+    raw_balancesheet = pd.DataFrame(
+        [
+            {"ts_code": "000001.SZ", "ann_date": "20240131", "f_ann_date": "20240202", "end_date": "20231231", "total_assets": 500.0},
+        ]
+    )
+    raw_cashflow = pd.DataFrame(
+        [
+            {"ts_code": "000001.SZ", "ann_date": "20240131", "f_ann_date": "20240201", "end_date": "20231231", "n_cashflow_act": 80.0},
+        ]
+    )
+    calendar_table = pd.DataFrame(
+        [
+            {"trade_date": "2024-02-01"},
+            {"trade_date": "2024-02-02"},
+            {"trade_date": "2024-02-05"},
+        ]
+    )
+
+    bs_result = build_balancesheet_pit_table(raw_balancesheet, calendar_table)
+    cf_result = build_cashflow_pit_table(raw_cashflow, calendar_table)
+
+    assert str(bs_result.iloc[0]["bs_tradable_date"].date()) == "2024-02-05"
+    assert str(cf_result.iloc[0]["cf_tradable_date"].date()) == "2024-02-02"

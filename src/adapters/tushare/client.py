@@ -70,3 +70,12 @@ class TushareClient:
 
     def fetch_fina_indicator(self, ts_code: str, start_date: str, end_date: str) -> pd.DataFrame:
         return self._call("fina_indicator", ts_code=ts_code, start_date=start_date, end_date=end_date)
+
+    def fetch_income(self, ts_code: str, start_date: str, end_date: str) -> pd.DataFrame:
+        return self._call("income", ts_code=ts_code, start_date=start_date, end_date=end_date)
+
+    def fetch_balancesheet(self, ts_code: str, start_date: str, end_date: str) -> pd.DataFrame:
+        return self._call("balancesheet", ts_code=ts_code, start_date=start_date, end_date=end_date)
+
+    def fetch_cashflow(self, ts_code: str, start_date: str, end_date: str) -> pd.DataFrame:
+        return self._call("cashflow", ts_code=ts_code, start_date=start_date, end_date=end_date)

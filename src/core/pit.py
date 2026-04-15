@@ -37,6 +37,10 @@ def _empty_monthly_snapshot_base() -> pd.DataFrame:
             "volume_ratio",
             "amount",
             "vol",
+            "fi_report_period",
+            "fi_ann_date",
+            "fi_availability_date",
+            "fi_tradable_date",
         ]
     )
 
@@ -50,6 +54,7 @@ def _asof_join_by_ts_code(
     right_value_cols: list[str],
     right_time_alias: str,
     left_keep_cols: list[str] | None = None,
+    right_sort_cols: list[str] | None = None,
 ) -> pd.DataFrame:
     keep_cols = ["ts_code", left_time_col, *(left_keep_cols or [])]
     if left.empty:
@@ -63,10 +68,12 @@ def _asof_join_by_ts_code(
     right_frame = right[["ts_code", right_time_col, *right_value_cols]].copy()
     right_frame[right_time_col] = pd.to_datetime(right_frame[right_time_col], errors="coerce")
     right_frame = right_frame.dropna(subset=["ts_code", right_time_col])
-    right_frame = right_frame.sort_values([right_time_col, "ts_code"], kind="mergesort").reset_index(drop=True)
+    pre_sort_cols = [right_time_col, "ts_code", *(right_sort_cols or [])]
+    right_frame = right_frame.sort_values(pre_sort_cols, kind="mergesort").reset_index(drop=True)
     right_frame = right_frame.drop_duplicates(subset=["ts_code", right_time_col], keep="last")
     right_frame = right_frame.rename(columns={right_time_col: right_time_alias})
-    right_frame = right_frame.sort_values([right_time_alias, "ts_code"], kind="mergesort").reset_index(drop=True)
+    post_sort_cols = [right_time_alias, "ts_code", *(right_sort_cols or [])]
+    right_frame = right_frame.sort_values(post_sort_cols, kind="mergesort").reset_index(drop=True)
 
     return pd.merge_asof(
         left_frame,
@@ -79,48 +86,162 @@ def _asof_join_by_ts_code(
     )
 
 
-def build_fina_indicator_pit_table(raw_fina_indicator: pd.DataFrame, calendar_table: pd.DataFrame) -> pd.DataFrame:
-    if raw_fina_indicator.empty:
-        return pd.DataFrame(
-            columns=[
-                "ts_code",
-                "fi_report_period",
-                "fi_ann_date",
-                "fi_availability_date",
-                "fi_tradable_date",
-            ]
-        )
+def build_financial_statement_pit_table(
+    raw_statement: pd.DataFrame,
+    calendar_table: pd.DataFrame,
+    *,
+    prefix: str,
+    availability_source_cols: list[str],
+    include_f_ann_date: bool,
+) -> pd.DataFrame:
+    if raw_statement.empty:
+        base_columns = [
+            "ts_code",
+            f"{prefix}_report_period",
+            f"{prefix}_ann_date",
+            f"{prefix}_availability_date",
+            f"{prefix}_tradable_date",
+        ]
+        if include_f_ann_date:
+            base_columns.insert(3, f"{prefix}_f_ann_date")
+        return pd.DataFrame(columns=base_columns)
 
-    fina_indicator = raw_fina_indicator.copy()
-    fina_indicator["ann_date"] = pd.to_datetime(fina_indicator["ann_date"], errors="coerce")
-    fina_indicator["end_date"] = pd.to_datetime(fina_indicator["end_date"], errors="coerce")
-    fina_indicator = fina_indicator.dropna(subset=["ts_code", "ann_date", "end_date"]).reset_index(drop=True)
-    fina_indicator["report_period"] = fina_indicator["end_date"]
-    fina_indicator["availability_date"] = fina_indicator["ann_date"]
+    statement = raw_statement.copy()
+    for column in ("ann_date", "f_ann_date", "end_date"):
+        if column in statement.columns:
+            statement[column] = pd.to_datetime(statement[column], errors="coerce")
+    statement = statement.dropna(subset=["ts_code", "ann_date", "end_date"]).reset_index(drop=True)
+    statement["report_period"] = statement["end_date"]
+
+    availability_series = None
+    for source_col in availability_source_cols:
+        if source_col in statement.columns:
+            if availability_series is None:
+                availability_series = statement[source_col].copy()
+            else:
+                availability_series = availability_series.fillna(statement[source_col])
+    if availability_series is None:
+        availability_series = statement["ann_date"].copy()
+    statement["availability_date"] = availability_series
 
     trading_dates = pd.to_datetime(calendar_table["trade_date"], errors="coerce").dropna().sort_values().reset_index(drop=True)
     trading_array = trading_dates.to_numpy(dtype="datetime64[ns]")
-    availability_array = fina_indicator["availability_date"].to_numpy(dtype="datetime64[ns]")
+    availability_array = statement["availability_date"].to_numpy(dtype="datetime64[ns]")
     next_trade_positions = np.searchsorted(trading_array, availability_array, side="right")
-    tradable_dates = pd.Series(pd.NaT, index=fina_indicator.index, dtype="datetime64[ns]")
+    tradable_dates = pd.Series(pd.NaT, index=statement.index, dtype="datetime64[ns]")
     valid_positions = next_trade_positions < len(trading_array)
     tradable_dates.loc[valid_positions] = trading_dates.iloc[next_trade_positions[valid_positions]].to_numpy()
-    fina_indicator["tradable_date"] = tradable_dates
+    statement["tradable_date"] = tradable_dates
 
-    base_cols = ["ts_code", "report_period", "ann_date", "availability_date", "tradable_date"]
-    metric_cols = [column for column in fina_indicator.columns if column not in {"ts_code", "ann_date", "end_date", "report_period", "availability_date", "tradable_date"}]
+    excluded_cols = {"ts_code", "ann_date", "end_date", "report_period", "availability_date", "tradable_date"}
+    if "f_ann_date" in statement.columns:
+        excluded_cols.add("f_ann_date")
+    metric_cols = [column for column in statement.columns if column not in excluded_cols]
 
     rename_map = {
-        "report_period": "fi_report_period",
-        "ann_date": "fi_ann_date",
-        "availability_date": "fi_availability_date",
-        "tradable_date": "fi_tradable_date",
+        "report_period": f"{prefix}_report_period",
+        "ann_date": f"{prefix}_ann_date",
+        "availability_date": f"{prefix}_availability_date",
+        "tradable_date": f"{prefix}_tradable_date",
     }
-    rename_map.update({column: f"fi_{column}" for column in metric_cols})
+    selected_cols = ["ts_code", "report_period", "ann_date"]
+    if include_f_ann_date and "f_ann_date" in statement.columns:
+        rename_map["f_ann_date"] = f"{prefix}_f_ann_date"
+        selected_cols.append("f_ann_date")
+    selected_cols.extend(["availability_date", "tradable_date", *metric_cols])
+    rename_map.update({column: f"{prefix}_{column}" for column in metric_cols})
 
-    result = fina_indicator[["ts_code", *base_cols[1:], *metric_cols]].rename(columns=rename_map)
-    result = result.sort_values(["fi_tradable_date", "ts_code", "fi_report_period", "fi_ann_date"], kind="mergesort").reset_index(drop=True)
+    result = statement[selected_cols].rename(columns=rename_map)
+    sort_cols = [f"{prefix}_tradable_date", "ts_code", f"{prefix}_report_period", f"{prefix}_ann_date"]
+    if include_f_ann_date and f"{prefix}_f_ann_date" in result.columns:
+        sort_cols.append(f"{prefix}_f_ann_date")
+    if f"{prefix}_update_flag" in result.columns:
+        sort_cols.append(f"{prefix}_update_flag")
+    result = result.sort_values(sort_cols, kind="mergesort").reset_index(drop=True)
     return result
+
+
+def build_fina_indicator_pit_table(raw_fina_indicator: pd.DataFrame, calendar_table: pd.DataFrame) -> pd.DataFrame:
+    return build_financial_statement_pit_table(
+        raw_fina_indicator,
+        calendar_table,
+        prefix="fi",
+        availability_source_cols=["ann_date"],
+        include_f_ann_date=False,
+    )
+
+
+def build_income_pit_table(raw_income: pd.DataFrame, calendar_table: pd.DataFrame) -> pd.DataFrame:
+    return build_financial_statement_pit_table(
+        raw_income,
+        calendar_table,
+        prefix="inc",
+        availability_source_cols=["f_ann_date", "ann_date"],
+        include_f_ann_date=True,
+    )
+
+
+def build_balancesheet_pit_table(raw_balancesheet: pd.DataFrame, calendar_table: pd.DataFrame) -> pd.DataFrame:
+    return build_financial_statement_pit_table(
+        raw_balancesheet,
+        calendar_table,
+        prefix="bs",
+        availability_source_cols=["f_ann_date", "ann_date"],
+        include_f_ann_date=True,
+    )
+
+
+def build_cashflow_pit_table(raw_cashflow: pd.DataFrame, calendar_table: pd.DataFrame) -> pd.DataFrame:
+    return build_financial_statement_pit_table(
+        raw_cashflow,
+        calendar_table,
+        prefix="cf",
+        availability_source_cols=["f_ann_date", "ann_date"],
+        include_f_ann_date=True,
+    )
+
+
+def _join_financial_snapshot(
+    snapshot: pd.DataFrame,
+    universe: pd.DataFrame,
+    raw_statement: pd.DataFrame | None,
+    calendar_table: pd.DataFrame | None,
+    *,
+    build_pit_table,
+    prefix: str,
+) -> pd.DataFrame:
+    if raw_statement is None or calendar_table is None or raw_statement.empty:
+        return snapshot
+
+    pit_table = build_pit_table(raw_statement, calendar_table)
+    tradable_col = f"{prefix}_tradable_date"
+    report_period_col = f"{prefix}_report_period"
+    ann_date_col = f"{prefix}_ann_date"
+    sort_cols = [report_period_col, ann_date_col]
+    f_ann_col = f"{prefix}_f_ann_date"
+    if f_ann_col in pit_table.columns:
+        sort_cols.append(f_ann_col)
+    update_flag_col = f"{prefix}_update_flag"
+    if update_flag_col in pit_table.columns:
+        sort_cols.append(update_flag_col)
+
+    pit_cols = [column for column in pit_table.columns if column not in {"ts_code", tradable_col}]
+    pit_snapshot = _asof_join_by_ts_code(
+        universe,
+        pit_table,
+        left_time_col="trade_execution_date",
+        right_time_col=tradable_col,
+        right_value_cols=pit_cols,
+        right_time_alias=tradable_col,
+        left_keep_cols=["rebalance_date"],
+        right_sort_cols=sort_cols,
+    )
+    return snapshot.merge(
+        pit_snapshot,
+        on=["ts_code", "rebalance_date", "trade_execution_date"],
+        how="left",
+        validate="one_to_one",
+    )
 
 
 def build_monthly_snapshot_base(
@@ -129,6 +250,9 @@ def build_monthly_snapshot_base(
     daily_basic: pd.DataFrame,
     *,
     raw_fina_indicator: pd.DataFrame | None = None,
+    raw_income: pd.DataFrame | None = None,
+    raw_balancesheet: pd.DataFrame | None = None,
+    raw_cashflow: pd.DataFrame | None = None,
     calendar_table: pd.DataFrame | None = None,
 ) -> pd.DataFrame:
     if monthly_universe.empty:
@@ -178,24 +302,38 @@ def build_monthly_snapshot_base(
         validate="one_to_one",
     )
 
-    if raw_fina_indicator is not None and calendar_table is not None and not raw_fina_indicator.empty:
-        fina_indicator_pit = build_fina_indicator_pit_table(raw_fina_indicator, calendar_table)
-        fina_indicator_cols = [column for column in fina_indicator_pit.columns if column not in {"ts_code", "fi_tradable_date"}]
-        fina_indicator_snapshot = _asof_join_by_ts_code(
-            universe,
-            fina_indicator_pit,
-            left_time_col="trade_execution_date",
-            right_time_col="fi_tradable_date",
-            right_value_cols=fina_indicator_cols,
-            right_time_alias="fi_tradable_date",
-            left_keep_cols=["rebalance_date"],
-        )
-        snapshot = snapshot.merge(
-            fina_indicator_snapshot,
-            on=["ts_code", "rebalance_date", "trade_execution_date"],
-            how="left",
-            validate="one_to_one",
-        )
+    snapshot = _join_financial_snapshot(
+        snapshot,
+        universe,
+        raw_fina_indicator,
+        calendar_table,
+        build_pit_table=build_fina_indicator_pit_table,
+        prefix="fi",
+    )
+    snapshot = _join_financial_snapshot(
+        snapshot,
+        universe,
+        raw_income,
+        calendar_table,
+        build_pit_table=build_income_pit_table,
+        prefix="inc",
+    )
+    snapshot = _join_financial_snapshot(
+        snapshot,
+        universe,
+        raw_balancesheet,
+        calendar_table,
+        build_pit_table=build_balancesheet_pit_table,
+        prefix="bs",
+    )
+    snapshot = _join_financial_snapshot(
+        snapshot,
+        universe,
+        raw_cashflow,
+        calendar_table,
+        build_pit_table=build_cashflow_pit_table,
+        prefix="cf",
+    )
 
     ordered_cols = [
         "rebalance_date",
@@ -229,7 +367,9 @@ def build_monthly_snapshot_base(
         "amount",
         "vol",
     ]
-    fi_cols = sorted(column for column in snapshot.columns if column.startswith("fi_"))
-    result = snapshot[[*ordered_cols, *fi_cols]].copy()
+    financial_cols = sorted(
+        column for column in snapshot.columns if column.startswith(("fi_", "inc_", "bs_", "cf_"))
+    )
+    result = snapshot[[*ordered_cols, *financial_cols]].copy()
     result = result.sort_values(["rebalance_date", "ts_code"]).reset_index(drop=True)
     return result

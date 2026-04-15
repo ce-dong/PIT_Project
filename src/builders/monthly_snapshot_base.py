@@ -43,12 +43,30 @@ class MonthlySnapshotBaseBuilder(BaseBuilder):
         except FileNotFoundError:
             self.logger.info("Raw fina_indicator not found; building monthly_snapshot_base without financial PIT columns")
             fina_indicator = pd.DataFrame()
+        try:
+            income = self.raw_store.read_table("income")
+        except FileNotFoundError:
+            self.logger.info("Raw income not found; building monthly_snapshot_base without income PIT columns")
+            income = pd.DataFrame()
+        try:
+            balancesheet = self.raw_store.read_table("balancesheet")
+        except FileNotFoundError:
+            self.logger.info("Raw balancesheet not found; building monthly_snapshot_base without balancesheet PIT columns")
+            balancesheet = pd.DataFrame()
+        try:
+            cashflow = self.raw_store.read_table("cashflow")
+        except FileNotFoundError:
+            self.logger.info("Raw cashflow not found; building monthly_snapshot_base without cashflow PIT columns")
+            cashflow = pd.DataFrame()
 
         monthly_snapshot_base = build_monthly_snapshot_base(
             monthly_universe,
             adjusted_price_panel,
             daily_basic,
             raw_fina_indicator=fina_indicator,
+            raw_income=income,
+            raw_balancesheet=balancesheet,
+            raw_cashflow=cashflow,
             calendar_table=calendar_table,
         )
 
