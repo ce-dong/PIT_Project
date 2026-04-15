@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+from datetime import datetime, timezone
 
 from src.adapters.tushare.client import TushareClient
 from src.builders.base import BuildContext
@@ -12,6 +13,7 @@ from src.storage.state import IngestionStateStore
 from src.updaters.base import UpdateContext
 from src.updaters.registry import CORE_TABLE_ORDER, UPDATER_REGISTRY
 from src.validators.core import CORE_VALIDATION_ORDER, run_core_validations
+from src.validators.reporting import write_validation_report
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -46,6 +48,11 @@ def build_parser() -> argparse.ArgumentParser:
         "table",
         choices=[*CORE_VALIDATION_ORDER, "all"],
         help="Core lake table to validate.",
+    )
+    validate_parser.add_argument(
+        "--write-report",
+        action="store_true",
+        help="Write a markdown validation report under data/reports.",
     )
     return parser
 
@@ -103,6 +110,20 @@ def run_validate(args: argparse.Namespace) -> int:
     config, _, _, lake_store, _ = _build_runtime()
     tables = CORE_VALIDATION_ORDER if args.table == "all" else [args.table]
     results = run_core_validations(config, lake_store, tables=tables)
+    if args.write_report:
+        timestamp = datetime.now(timezone.utc)
+        write_validation_report(
+            config.reports_root / "latest_quality_report.md",
+            results,
+            generated_at=timestamp,
+            command=f"python -m src.cli validate {args.table}",
+        )
+        write_validation_report(
+            config.reports_root / f"quality_report_{timestamp.strftime('%Y%m%dT%H%M%SZ')}.md",
+            results,
+            generated_at=timestamp,
+            command=f"python -m src.cli validate {args.table}",
+        )
     print(json.dumps([result.to_dict() for result in results], indent=2, ensure_ascii=True, default=str))
     has_error = any(result.error_count > 0 for result in results)
     return 1 if has_error else 0

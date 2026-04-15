@@ -16,6 +16,7 @@ class AppConfig:
     lake_data_root: Path
     metadata_root: Path
     log_root: Path
+    reports_root: Path
     env_file: Path
     tushare_token: str
     initial_history_start: str
@@ -54,6 +55,7 @@ class AppConfig:
             lake_data_root=root / "data" / "lake",
             metadata_root=root / "data" / "metadata",
             log_root=root / "data" / "logs",
+            reports_root=root / "data" / "reports",
             env_file=env_file,
             tushare_token=token,
             initial_history_start=os.getenv("PIT_HISTORY_START", "20150101"),
@@ -78,7 +80,7 @@ class AppConfig:
         )
 
     def ensure_directories(self) -> None:
-        for path in (self.data_root, self.raw_data_root, self.lake_data_root, self.metadata_root, self.log_root):
+        for path in (self.data_root, self.raw_data_root, self.lake_data_root, self.metadata_root, self.log_root, self.reports_root):
             path.mkdir(parents=True, exist_ok=True)
 
     def calendar_end_date(self) -> str:
