@@ -86,3 +86,14 @@ def test_cli_parser_accepts_research_init_subcommand():
     assert args.research_command == "init"
     assert args.name == "Momentum Baseline"
     assert args.stages == ["features"]
+
+
+def test_cli_parser_accepts_research_factors_subcommand():
+    parser = build_parser()
+
+    args = parser.parse_args(["research", "factors", "--family", "momentum", "--name", "momentum_12_1"])
+
+    assert args.command == "research"
+    assert args.research_command == "factors"
+    assert args.family == "momentum"
+    assert args.factor_names == ["momentum_12_1"]

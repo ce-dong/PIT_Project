@@ -8,6 +8,7 @@ from src.adapters.tushare.client import TushareClient
 from src.builders.base import BuildContext
 from src.builders.registry import BUILDER_REGISTRY, BUILD_ORDER
 from src.config import AppConfig
+from src.features.registry import FACTOR_REGISTRY
 from src.research.experiment import RESEARCH_STAGE_ORDER, ResearchRunConfig, initialize_experiment_layout
 from src.storage.parquet import ParquetDataStore
 from src.storage.state import IngestionStateStore
@@ -77,6 +78,19 @@ def build_parser() -> argparse.ArgumentParser:
         "--dry-run",
         action="store_true",
         help="Preview the experiment scaffold without writing directories or a manifest.",
+    )
+
+    factors_parser = research_subparsers.add_parser("factors", help="Inspect registered factor definitions.")
+    factors_parser.add_argument(
+        "--family",
+        choices=sorted(FACTOR_REGISTRY.families()),
+        help="Optionally filter the registry by factor family.",
+    )
+    factors_parser.add_argument(
+        "--name",
+        dest="factor_names",
+        action="append",
+        help="Optionally request one or more specific factors by name.",
     )
     return parser
 
@@ -169,6 +183,15 @@ def run_research(args: argparse.Namespace) -> int:
         )
         result = initialize_experiment_layout(config, run_config, dry_run=args.dry_run)
         print(json.dumps(result, indent=2, ensure_ascii=True, default=str))
+        return 0
+    if args.research_command == "factors":
+        specs = FACTOR_REGISTRY.list(names=args.factor_names, family=args.family)
+        payload = {
+            "count": len(specs),
+            "families": sorted({spec.family for spec in specs}),
+            "factors": [spec.to_dict() for spec in specs],
+        }
+        print(json.dumps(payload, indent=2, ensure_ascii=True, default=str))
         return 0
     raise ValueError(f"Unsupported research subcommand: {args.research_command}")
 
