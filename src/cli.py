@@ -8,6 +8,7 @@ from src.adapters.tushare.client import TushareClient
 from src.builders.base import BuildContext
 from src.builders.registry import BUILDER_REGISTRY, BUILD_ORDER
 from src.config import AppConfig
+from src.research.experiment import RESEARCH_STAGE_ORDER, ResearchRunConfig, initialize_experiment_layout
 from src.storage.parquet import ParquetDataStore
 from src.storage.state import IngestionStateStore
 from src.updaters.base import UpdateContext
@@ -54,6 +55,29 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Write a markdown validation report under data/reports.",
     )
+
+    research_parser = subparsers.add_parser("research", help="Manage downstream factor-research experiments.")
+    research_subparsers = research_parser.add_subparsers(dest="research_command", required=True)
+
+    init_parser = research_subparsers.add_parser("init", help="Initialize the Agent 2 experiment scaffold.")
+    init_parser.add_argument("--name", required=True, help="Human-readable experiment name.")
+    init_parser.add_argument(
+        "--as-of",
+        dest="as_of_date",
+        help="Optional as-of date for the experiment namespace in YYYYMMDD or YYYY-MM-DD.",
+    )
+    init_parser.add_argument(
+        "--stage",
+        dest="stages",
+        action="append",
+        choices=list(RESEARCH_STAGE_ORDER),
+        help="Optional stage to include. Repeat to narrow the scaffold to a subset of stages.",
+    )
+    init_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Preview the experiment scaffold without writing directories or a manifest.",
+    )
     return parser
 
 
@@ -69,6 +93,12 @@ def _build_runtime() -> tuple[AppConfig, TushareClient, ParquetDataStore, Parque
     lake_store = ParquetDataStore(config.lake_data_root)
     state_store = IngestionStateStore(config.metadata_root / "ingestion_state.json")
     return config, client, raw_store, lake_store, state_store
+
+
+def _load_config(*, require_tushare_token: bool = True) -> AppConfig:
+    config = AppConfig.load(require_tushare_token=require_tushare_token)
+    config.ensure_directories()
+    return config
 
 
 def run_ingest(args: argparse.Namespace) -> int:
@@ -129,6 +159,20 @@ def run_validate(args: argparse.Namespace) -> int:
     return 1 if has_error else 0
 
 
+def run_research(args: argparse.Namespace) -> int:
+    config = _load_config(require_tushare_token=False)
+    if args.research_command == "init":
+        run_config = ResearchRunConfig(
+            experiment_name=args.name,
+            as_of_date=args.as_of_date,
+            stages=tuple(args.stages) if args.stages else RESEARCH_STAGE_ORDER,
+        )
+        result = initialize_experiment_layout(config, run_config, dry_run=args.dry_run)
+        print(json.dumps(result, indent=2, ensure_ascii=True, default=str))
+        return 0
+    raise ValueError(f"Unsupported research subcommand: {args.research_command}")
+
+
 def main() -> int:
     parser = build_parser()
     args = parser.parse_args()
@@ -138,6 +182,8 @@ def main() -> int:
         return run_build(args)
     if args.command == "validate":
         return run_validate(args)
+    if args.command == "research":
+        return run_research(args)
     parser.error(f"Unsupported command: {args.command}")
     return 2
 

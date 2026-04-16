@@ -6,6 +6,8 @@ __pycache__/
 data/logs/
 data/lake/
 data/metadata/
+data/panel/
+data/experiments/
 data/reports/
 data/raw/
 

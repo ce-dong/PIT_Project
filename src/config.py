@@ -14,6 +14,8 @@ class AppConfig:
     data_root: Path
     raw_data_root: Path
     lake_data_root: Path
+    panel_data_root: Path
+    experiments_root: Path
     metadata_root: Path
     log_root: Path
     reports_root: Path
@@ -40,12 +42,12 @@ class AppConfig:
     calendar_exchange: str
 
     @classmethod
-    def load(cls, project_root: Path | None = None) -> "AppConfig":
+    def load(cls, project_root: Path | None = None, *, require_tushare_token: bool = True) -> "AppConfig":
         root = (project_root or Path.cwd()).resolve()
         env_file = root / ".env"
         env_values = dotenv_values(env_file) if env_file.exists() else {}
         token = env_values.get("TUSHARE_TOKEN") or os.getenv("TUSHARE_TOKEN")
-        if not token:
+        if require_tushare_token and not token:
             raise RuntimeError("Missing TUSHARE_TOKEN. Add it to .env or the environment.")
 
         return cls(
@@ -53,11 +55,13 @@ class AppConfig:
             data_root=root / "data",
             raw_data_root=root / "data" / "raw",
             lake_data_root=root / "data" / "lake",
+            panel_data_root=root / "data" / "panel",
+            experiments_root=root / "data" / "experiments",
             metadata_root=root / "data" / "metadata",
             log_root=root / "data" / "logs",
             reports_root=root / "data" / "reports",
             env_file=env_file,
-            tushare_token=token,
+            tushare_token=token or "",
             initial_history_start=os.getenv("PIT_HISTORY_START", "20150101"),
             calendar_start_date=os.getenv("PIT_CALENDAR_START", "19900101"),
             calendar_future_days=int(os.getenv("PIT_CALENDAR_FUTURE_DAYS", "366")),
@@ -80,7 +84,16 @@ class AppConfig:
         )
 
     def ensure_directories(self) -> None:
-        for path in (self.data_root, self.raw_data_root, self.lake_data_root, self.metadata_root, self.log_root, self.reports_root):
+        for path in (
+            self.data_root,
+            self.raw_data_root,
+            self.lake_data_root,
+            self.panel_data_root,
+            self.experiments_root,
+            self.metadata_root,
+            self.log_root,
+            self.reports_root,
+        ):
             path.mkdir(parents=True, exist_ok=True)
 
     def calendar_end_date(self) -> str:
