@@ -9,6 +9,7 @@ from src.builders.base import BuildContext
 from src.builders.registry import BUILDER_REGISTRY, BUILD_ORDER
 from src.config import AppConfig
 from src.features.registry import FACTOR_REGISTRY
+from src.labels.registry import LABEL_REGISTRY
 from src.research.experiment import RESEARCH_STAGE_ORDER, ResearchRunConfig, initialize_experiment_layout
 from src.storage.parquet import ParquetDataStore
 from src.storage.state import IngestionStateStore
@@ -56,7 +57,7 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Write a markdown validation report under data/reports.",
     )
-
+ 
     research_parser = subparsers.add_parser("research", help="Manage downstream factor-research experiments.")
     research_subparsers = research_parser.add_subparsers(dest="research_command", required=True)
 
@@ -91,6 +92,19 @@ def build_parser() -> argparse.ArgumentParser:
         dest="factor_names",
         action="append",
         help="Optionally request one or more specific factors by name.",
+    )
+
+    labels_parser = research_subparsers.add_parser("labels", help="Inspect registered label definitions.")
+    labels_parser.add_argument(
+        "--stage",
+        choices=sorted(LABEL_REGISTRY.stages()),
+        help="Optionally filter the registry by label stage.",
+    )
+    labels_parser.add_argument(
+        "--name",
+        dest="label_names",
+        action="append",
+        help="Optionally request one or more specific labels by name.",
     )
     return parser
 
@@ -190,6 +204,15 @@ def run_research(args: argparse.Namespace) -> int:
             "count": len(specs),
             "families": sorted({spec.family for spec in specs}),
             "factors": [spec.to_dict() for spec in specs],
+        }
+        print(json.dumps(payload, indent=2, ensure_ascii=True, default=str))
+        return 0
+    if args.research_command == "labels":
+        specs = LABEL_REGISTRY.list(names=args.label_names, stage=args.stage)
+        payload = {
+            "count": len(specs),
+            "stages": sorted({spec.stage for spec in specs}),
+            "labels": [spec.to_dict() for spec in specs],
         }
         print(json.dumps(payload, indent=2, ensure_ascii=True, default=str))
         return 0

@@ -97,3 +97,14 @@ def test_cli_parser_accepts_research_factors_subcommand():
     assert args.research_command == "factors"
     assert args.family == "momentum"
     assert args.factor_names == ["momentum_12_1"]
+
+
+def test_cli_parser_accepts_research_labels_subcommand():
+    parser = build_parser()
+
+    args = parser.parse_args(["research", "labels", "--stage", "forward_return", "--name", "fwd_ret_1m"])
+
+    assert args.command == "research"
+    assert args.research_command == "labels"
+    assert args.stage == "forward_return"
+    assert args.label_names == ["fwd_ret_1m"]
