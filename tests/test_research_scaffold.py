@@ -108,3 +108,14 @@ def test_cli_parser_accepts_research_labels_subcommand():
     assert args.research_command == "labels"
     assert args.stage == "forward_return"
     assert args.label_names == ["fwd_ret_1m"]
+
+
+def test_cli_parser_accepts_research_build_labels_subcommand():
+    parser = build_parser()
+
+    args = parser.parse_args(["research", "build-labels", "--name", "Agent2 Baseline", "--label", "fwd_ret_1m"])
+
+    assert args.command == "research"
+    assert args.research_command == "build-labels"
+    assert args.name == "Agent2 Baseline"
+    assert args.label_names == ["fwd_ret_1m"]

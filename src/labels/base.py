@@ -15,10 +15,17 @@ class LabelContext:
     as_of_date: str | None = None
     output_table_name: str = "label_panel"
     required_tables: tuple[str, ...] = LABEL_REQUIRED_TABLES
+    label_names: tuple[str, ...] = ()
 
 
 class BaseLabelBuilder:
     name = ""
 
-    def build(self, price_df: pd.DataFrame, context: LabelContext) -> pd.DataFrame:
+    def build(
+        self,
+        monthly_universe_df: pd.DataFrame,
+        adjusted_price_df: pd.DataFrame,
+        calendar_df: pd.DataFrame,
+        context: LabelContext,
+    ) -> pd.DataFrame:
         raise NotImplementedError

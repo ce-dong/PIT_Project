@@ -9,6 +9,7 @@ from src.builders.base import BuildContext
 from src.builders.registry import BUILDER_REGISTRY, BUILD_ORDER
 from src.config import AppConfig
 from src.features.registry import FACTOR_REGISTRY
+from src.labels.runner import build_label_panel
 from src.labels.registry import LABEL_REGISTRY
 from src.research.experiment import RESEARCH_STAGE_ORDER, ResearchRunConfig, initialize_experiment_layout
 from src.storage.parquet import ParquetDataStore
@@ -105,6 +106,26 @@ def build_parser() -> argparse.ArgumentParser:
         dest="label_names",
         action="append",
         help="Optionally request one or more specific labels by name.",
+    )
+
+    build_labels_parser = research_subparsers.add_parser("build-labels", help="Build and persist the label panel.")
+    build_labels_parser.add_argument("--name", required=True, help="Human-readable experiment name.")
+    build_labels_parser.add_argument(
+        "--as-of",
+        dest="as_of_date",
+        help="Optional as-of date for the experiment namespace in YYYYMMDD or YYYY-MM-DD.",
+    )
+    build_labels_parser.add_argument(
+        "--label",
+        dest="label_names",
+        action="append",
+        choices=sorted(spec.name for spec in LABEL_REGISTRY.list()),
+        help="Optionally limit the build to a subset of registered labels.",
+    )
+    build_labels_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Preview the label-panel build without writing parquet output.",
     )
     return parser
 
@@ -215,6 +236,21 @@ def run_research(args: argparse.Namespace) -> int:
             "labels": [spec.to_dict() for spec in specs],
         }
         print(json.dumps(payload, indent=2, ensure_ascii=True, default=str))
+        return 0
+    if args.research_command == "build-labels":
+        run_config = ResearchRunConfig(
+            experiment_name=args.name,
+            as_of_date=args.as_of_date,
+            stages=RESEARCH_STAGE_ORDER,
+        )
+        initialize_experiment_layout(config, run_config, dry_run=args.dry_run)
+        result = build_label_panel(
+            config,
+            run_config,
+            label_names=tuple(args.label_names) if args.label_names else (),
+            dry_run=args.dry_run,
+        )
+        print(json.dumps(result, indent=2, ensure_ascii=True, default=str))
         return 0
     raise ValueError(f"Unsupported research subcommand: {args.research_command}")
 
