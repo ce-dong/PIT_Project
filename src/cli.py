@@ -8,6 +8,7 @@ from src.adapters.tushare.client import TushareClient
 from src.builders.base import BuildContext
 from src.builders.registry import BUILDER_REGISTRY, BUILD_ORDER
 from src.config import AppConfig
+from src.features.runner import build_factor_panel_artifact
 from src.features.registry import FACTOR_REGISTRY
 from src.labels.runner import build_label_panel
 from src.labels.registry import LABEL_REGISTRY
@@ -93,6 +94,26 @@ def build_parser() -> argparse.ArgumentParser:
         dest="factor_names",
         action="append",
         help="Optionally request one or more specific factors by name.",
+    )
+
+    build_factors_parser = research_subparsers.add_parser("build-factors", help="Build and persist the factor panel.")
+    build_factors_parser.add_argument("--name", required=True, help="Human-readable experiment name.")
+    build_factors_parser.add_argument(
+        "--as-of",
+        dest="as_of_date",
+        help="Optional as-of date for the experiment namespace in YYYYMMDD or YYYY-MM-DD.",
+    )
+    build_factors_parser.add_argument(
+        "--factor",
+        dest="factor_names",
+        action="append",
+        choices=sorted(spec.name for spec in FACTOR_REGISTRY.list()),
+        help="Optionally limit the build to a subset of registered factors.",
+    )
+    build_factors_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Preview the factor-panel build without writing parquet output.",
     )
 
     labels_parser = research_subparsers.add_parser("labels", help="Inspect registered label definitions.")
@@ -227,6 +248,21 @@ def run_research(args: argparse.Namespace) -> int:
             "factors": [spec.to_dict() for spec in specs],
         }
         print(json.dumps(payload, indent=2, ensure_ascii=True, default=str))
+        return 0
+    if args.research_command == "build-factors":
+        run_config = ResearchRunConfig(
+            experiment_name=args.name,
+            as_of_date=args.as_of_date,
+            stages=RESEARCH_STAGE_ORDER,
+        )
+        initialize_experiment_layout(config, run_config, dry_run=args.dry_run)
+        result = build_factor_panel_artifact(
+            config,
+            run_config,
+            factor_names=tuple(args.factor_names) if args.factor_names else (),
+            dry_run=args.dry_run,
+        )
+        print(json.dumps(result, indent=2, ensure_ascii=True, default=str))
         return 0
     if args.research_command == "labels":
         specs = LABEL_REGISTRY.list(names=args.label_names, stage=args.stage)

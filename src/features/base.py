@@ -15,11 +15,17 @@ class FeatureContext:
     as_of_date: str | None = None
     output_table_name: str = "factor_panel"
     required_tables: tuple[str, ...] = FEATURE_REQUIRED_TABLES
+    factor_names: tuple[str, ...] = ()
 
 
 class BaseFeatureBuilder:
     family = ""
     name = ""
 
-    def build(self, snapshot_df: pd.DataFrame, context: FeatureContext) -> pd.DataFrame:
+    def build(
+        self,
+        snapshot_df: pd.DataFrame,
+        adjusted_price_df: pd.DataFrame,
+        context: FeatureContext,
+    ) -> pd.DataFrame:
         raise NotImplementedError
