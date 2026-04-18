@@ -8,6 +8,7 @@ from src.adapters.tushare.client import TushareClient
 from src.builders.base import BuildContext
 from src.builders.registry import BUILDER_REGISTRY, BUILD_ORDER
 from src.config import AppConfig
+from src.evaluation.runner import build_rank_ic_artifact
 from src.features.runner import build_factor_panel_artifact
 from src.features.registry import FACTOR_REGISTRY
 from src.labels.runner import build_label_panel
@@ -148,6 +149,36 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Preview the label-panel build without writing parquet output.",
     )
+
+    build_evaluation_parser = research_subparsers.add_parser(
+        "build-evaluation",
+        help="Build and persist the Rank IC evaluation artifacts.",
+    )
+    build_evaluation_parser.add_argument("--name", required=True, help="Human-readable experiment name.")
+    build_evaluation_parser.add_argument(
+        "--as-of",
+        dest="as_of_date",
+        help="Optional as-of date for the experiment namespace in YYYYMMDD or YYYY-MM-DD.",
+    )
+    build_evaluation_parser.add_argument(
+        "--factor",
+        dest="factor_names",
+        action="append",
+        choices=sorted(spec.name for spec in FACTOR_REGISTRY.list()),
+        help="Optionally limit the evaluation to a subset of registered factors.",
+    )
+    build_evaluation_parser.add_argument(
+        "--label",
+        dest="label_names",
+        action="append",
+        choices=sorted(spec.name for spec in LABEL_REGISTRY.list()),
+        help="Optionally limit the evaluation to a subset of registered labels.",
+    )
+    build_evaluation_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Preview the evaluation build without writing artifacts.",
+    )
     return parser
 
 
@@ -283,6 +314,22 @@ def run_research(args: argparse.Namespace) -> int:
         result = build_label_panel(
             config,
             run_config,
+            label_names=tuple(args.label_names) if args.label_names else (),
+            dry_run=args.dry_run,
+        )
+        print(json.dumps(result, indent=2, ensure_ascii=True, default=str))
+        return 0
+    if args.research_command == "build-evaluation":
+        run_config = ResearchRunConfig(
+            experiment_name=args.name,
+            as_of_date=args.as_of_date,
+            stages=RESEARCH_STAGE_ORDER,
+        )
+        initialize_experiment_layout(config, run_config, dry_run=args.dry_run)
+        result = build_rank_ic_artifact(
+            config,
+            run_config,
+            factor_names=tuple(args.factor_names) if args.factor_names else (),
             label_names=tuple(args.label_names) if args.label_names else (),
             dry_run=args.dry_run,
         )

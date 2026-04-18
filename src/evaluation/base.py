@@ -14,7 +14,12 @@ class EvaluationContext:
     experiment_name: str
     experiment_slug: str
     as_of_date: str | None = None
+    output_table_name: str = "rank_ic"
     required_artifacts: tuple[str, ...] = EVALUATION_REQUIRED_ARTIFACTS
+    factor_names: tuple[str, ...] = ()
+    factor_fields: tuple[str, ...] = ()
+    label_names: tuple[str, ...] = ()
+    label_fields: tuple[str, ...] = ()
 
 
 class BaseEvaluator:

@@ -50,7 +50,19 @@ class ParquetDataStore:
         table_root = self.root / table_name
         if not table_root.exists():
             raise FileNotFoundError(f"Table '{table_name}' does not exist under {self.root}.")
-        return pd.read_parquet(table_root, columns=columns)
+        try:
+            return pd.read_parquet(table_root, columns=columns)
+        except Exception as error:
+            message = str(error)
+            if "Unable to merge: Field year has incompatible types" not in message and "Unable to merge: Field month has incompatible types" not in message:
+                raise
+
+            files = self.list_partition_files(table_name)
+            if not files:
+                return pd.DataFrame(columns=columns)
+
+            frames = [pd.read_parquet(path, columns=columns) for path in files]
+            return pd.concat(frames, ignore_index=True)
 
     def list_partition_files(self, table_name: str) -> list[Path]:
         table_root = self.root / table_name
