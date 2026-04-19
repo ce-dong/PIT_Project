@@ -12,6 +12,7 @@ class ReportContext:
     experiment_name: str
     experiment_slug: str
     as_of_date: str | None = None
+    output_file_name: str = "research_report.md"
     required_artifacts: tuple[str, ...] = REPORT_REQUIRED_ARTIFACTS
 
 

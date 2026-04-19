@@ -13,6 +13,7 @@ from src.features.runner import build_factor_panel_artifact
 from src.features.registry import FACTOR_REGISTRY
 from src.labels.runner import build_label_panel
 from src.labels.registry import LABEL_REGISTRY
+from src.reports.runner import build_research_report
 from src.research.experiment import RESEARCH_STAGE_ORDER, ResearchRunConfig, initialize_experiment_layout
 from src.storage.parquet import ParquetDataStore
 from src.storage.state import IngestionStateStore
@@ -179,6 +180,22 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Preview the evaluation build without writing artifacts.",
     )
+
+    build_report_parser = research_subparsers.add_parser(
+        "build-report",
+        help="Build and persist the markdown research report.",
+    )
+    build_report_parser.add_argument("--name", required=True, help="Human-readable experiment name.")
+    build_report_parser.add_argument(
+        "--as-of",
+        dest="as_of_date",
+        help="Optional as-of date for the experiment namespace in YYYYMMDD or YYYY-MM-DD.",
+    )
+    build_report_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Preview the report build without writing artifacts.",
+    )
     return parser
 
 
@@ -331,6 +348,20 @@ def run_research(args: argparse.Namespace) -> int:
             run_config,
             factor_names=tuple(args.factor_names) if args.factor_names else (),
             label_names=tuple(args.label_names) if args.label_names else (),
+            dry_run=args.dry_run,
+        )
+        print(json.dumps(result, indent=2, ensure_ascii=True, default=str))
+        return 0
+    if args.research_command == "build-report":
+        run_config = ResearchRunConfig(
+            experiment_name=args.name,
+            as_of_date=args.as_of_date,
+            stages=RESEARCH_STAGE_ORDER,
+        )
+        initialize_experiment_layout(config, run_config, dry_run=args.dry_run)
+        result = build_research_report(
+            config,
+            run_config,
             dry_run=args.dry_run,
         )
         print(json.dumps(result, indent=2, ensure_ascii=True, default=str))
