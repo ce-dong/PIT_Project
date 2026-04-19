@@ -7,9 +7,12 @@ from typing import Any
 
 from src.config import AppConfig
 from src.evaluation.base import EvaluationContext
+from src.evaluation.correlation import build_factor_correlation_tables
 from src.evaluation.fama_macbeth import build_fama_macbeth_tables
 from src.evaluation.ic import RankICEvaluator, build_evaluation_input
 from src.evaluation.portfolio import build_quantile_portfolio_tables
+from src.evaluation.redundancy import build_redundancy_tables
+from src.evaluation.robustness import build_subperiod_robustness_tables
 from src.evaluation.summary import build_evaluation_summary, build_monotonicity_summary
 from src.features.registry import FACTOR_REGISTRY, FactorSpec
 from src.labels.registry import LABEL_REGISTRY, LabelSpec
@@ -111,6 +114,25 @@ def build_rank_ic_artifact(
         spread_summary,
         monotonicity_summary,
     )
+    factor_correlation_timeseries, factor_correlation_summary, factor_correlation_matrix = build_factor_correlation_tables(
+        factor_panel,
+        factor_names=context.factor_names,
+        factor_fields=context.factor_fields,
+    )
+    redundancy_timeseries, redundancy_summary = build_redundancy_tables(
+        aligned_panel,
+        factor_names=context.factor_names,
+        factor_fields=context.factor_fields,
+        label_names=context.label_names,
+        label_fields=context.label_fields,
+        quantile_count=context.quantile_count,
+        evaluation_summary=evaluation_summary,
+    )
+    robustness_periods, subperiod_summary, robustness_summary = build_subperiod_robustness_tables(
+        ic_timeseries,
+        spread_timeseries,
+        evaluation_summary,
+    )
     fama_macbeth_timeseries, fama_macbeth_summary = build_fama_macbeth_tables(
         aligned_panel,
         factor_names=context.factor_names,
@@ -128,6 +150,14 @@ def build_rank_ic_artifact(
     spread_summary_path = evaluation_root / "top_bottom_spread_summary.parquet"
     monotonicity_summary_path = evaluation_root / "monotonicity_summary.parquet"
     evaluation_summary_path = evaluation_root / "evaluation_summary.parquet"
+    factor_correlation_timeseries_path = evaluation_root / "factor_correlation_timeseries.parquet"
+    factor_correlation_summary_path = evaluation_root / "factor_correlation_summary.parquet"
+    factor_correlation_matrix_path = evaluation_root / "factor_correlation_matrix.parquet"
+    redundancy_timeseries_path = evaluation_root / "redundancy_timeseries.parquet"
+    redundancy_summary_path = evaluation_root / "redundancy_summary.parquet"
+    robustness_periods_path = evaluation_root / "robustness_periods.parquet"
+    subperiod_summary_path = evaluation_root / "subperiod_summary.parquet"
+    robustness_summary_path = evaluation_root / "robustness_summary.parquet"
     fama_macbeth_timeseries_path = evaluation_root / "fama_macbeth_timeseries.parquet"
     fama_macbeth_summary_path = evaluation_root / "fama_macbeth_summary.parquet"
     manifest_path = evaluation_root / "rank_ic_manifest.json"
@@ -142,6 +172,9 @@ def build_rank_ic_artifact(
             "top_bottom_spread",
             "monotonicity_check",
             "evaluation_summary",
+            "factor_correlation",
+            "redundancy_analysis",
+            "subperiod_robustness",
             "fama_macbeth",
         ],
         "factor_names": list(context.factor_names),
@@ -155,6 +188,14 @@ def build_rank_ic_artifact(
         "spread_summary_path": str(spread_summary_path),
         "monotonicity_summary_path": str(monotonicity_summary_path),
         "evaluation_summary_path": str(evaluation_summary_path),
+        "factor_correlation_timeseries_path": str(factor_correlation_timeseries_path),
+        "factor_correlation_summary_path": str(factor_correlation_summary_path),
+        "factor_correlation_matrix_path": str(factor_correlation_matrix_path),
+        "redundancy_timeseries_path": str(redundancy_timeseries_path),
+        "redundancy_summary_path": str(redundancy_summary_path),
+        "robustness_periods_path": str(robustness_periods_path),
+        "subperiod_summary_path": str(subperiod_summary_path),
+        "robustness_summary_path": str(robustness_summary_path),
         "fama_macbeth_timeseries_path": str(fama_macbeth_timeseries_path),
         "fama_macbeth_summary_path": str(fama_macbeth_summary_path),
         "created_at": _now_iso(),
@@ -169,6 +210,14 @@ def build_rank_ic_artifact(
         spread_summary.to_parquet(spread_summary_path, index=False)
         monotonicity_summary.to_parquet(monotonicity_summary_path, index=False)
         evaluation_summary.to_parquet(evaluation_summary_path, index=False)
+        factor_correlation_timeseries.to_parquet(factor_correlation_timeseries_path, index=False)
+        factor_correlation_summary.to_parquet(factor_correlation_summary_path, index=False)
+        factor_correlation_matrix.to_parquet(factor_correlation_matrix_path, index=False)
+        redundancy_timeseries.to_parquet(redundancy_timeseries_path, index=False)
+        redundancy_summary.to_parquet(redundancy_summary_path, index=False)
+        robustness_periods.to_parquet(robustness_periods_path, index=False)
+        subperiod_summary.to_parquet(subperiod_summary_path, index=False)
+        robustness_summary.to_parquet(robustness_summary_path, index=False)
         fama_macbeth_timeseries.to_parquet(fama_macbeth_timeseries_path, index=False)
         fama_macbeth_summary.to_parquet(fama_macbeth_summary_path, index=False)
         manifest_path.write_text(json.dumps(manifest, indent=2, ensure_ascii=True) + "\n", encoding="utf-8")
@@ -181,6 +230,14 @@ def build_rank_ic_artifact(
             str(spread_summary_path.relative_to(config.project_root)),
             str(monotonicity_summary_path.relative_to(config.project_root)),
             str(evaluation_summary_path.relative_to(config.project_root)),
+            str(factor_correlation_timeseries_path.relative_to(config.project_root)),
+            str(factor_correlation_summary_path.relative_to(config.project_root)),
+            str(factor_correlation_matrix_path.relative_to(config.project_root)),
+            str(redundancy_timeseries_path.relative_to(config.project_root)),
+            str(redundancy_summary_path.relative_to(config.project_root)),
+            str(robustness_periods_path.relative_to(config.project_root)),
+            str(subperiod_summary_path.relative_to(config.project_root)),
+            str(robustness_summary_path.relative_to(config.project_root)),
             str(fama_macbeth_timeseries_path.relative_to(config.project_root)),
             str(fama_macbeth_summary_path.relative_to(config.project_root)),
         ]
@@ -198,6 +255,14 @@ def build_rank_ic_artifact(
         "spread_summary_rows": len(spread_summary),
         "monotonicity_summary_rows": len(monotonicity_summary),
         "evaluation_summary_rows": len(evaluation_summary),
+        "factor_correlation_timeseries_rows": len(factor_correlation_timeseries),
+        "factor_correlation_summary_rows": len(factor_correlation_summary),
+        "factor_correlation_matrix_rows": len(factor_correlation_matrix),
+        "redundancy_timeseries_rows": len(redundancy_timeseries),
+        "redundancy_summary_rows": len(redundancy_summary),
+        "robustness_periods_rows": len(robustness_periods),
+        "subperiod_summary_rows": len(subperiod_summary),
+        "robustness_summary_rows": len(robustness_summary),
         "fama_macbeth_timeseries_rows": len(fama_macbeth_timeseries),
         "fama_macbeth_summary_rows": len(fama_macbeth_summary),
         "factor_names": list(context.factor_names),
@@ -212,6 +277,14 @@ def build_rank_ic_artifact(
         "spread_summary_path": str(spread_summary_path.relative_to(config.project_root)),
         "monotonicity_summary_path": str(monotonicity_summary_path.relative_to(config.project_root)),
         "evaluation_summary_path": str(evaluation_summary_path.relative_to(config.project_root)),
+        "factor_correlation_timeseries_path": str(factor_correlation_timeseries_path.relative_to(config.project_root)),
+        "factor_correlation_summary_path": str(factor_correlation_summary_path.relative_to(config.project_root)),
+        "factor_correlation_matrix_path": str(factor_correlation_matrix_path.relative_to(config.project_root)),
+        "redundancy_timeseries_path": str(redundancy_timeseries_path.relative_to(config.project_root)),
+        "redundancy_summary_path": str(redundancy_summary_path.relative_to(config.project_root)),
+        "robustness_periods_path": str(robustness_periods_path.relative_to(config.project_root)),
+        "subperiod_summary_path": str(subperiod_summary_path.relative_to(config.project_root)),
+        "robustness_summary_path": str(robustness_summary_path.relative_to(config.project_root)),
         "fama_macbeth_timeseries_path": str(fama_macbeth_timeseries_path.relative_to(config.project_root)),
         "fama_macbeth_summary_path": str(fama_macbeth_summary_path.relative_to(config.project_root)),
         "artifact_manifest_path": str(manifest_path.relative_to(config.project_root)),

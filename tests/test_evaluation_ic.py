@@ -6,9 +6,12 @@ from pathlib import Path
 import pandas as pd
 
 from src.config import AppConfig
+from src.evaluation.correlation import build_factor_correlation_tables
 from src.evaluation.fama_macbeth import build_fama_macbeth_tables
 from src.evaluation.ic import build_evaluation_input, build_rank_ic_tables
 from src.evaluation.portfolio import build_quantile_portfolio_tables
+from src.evaluation.redundancy import build_redundancy_tables
+from src.evaluation.robustness import build_subperiod_robustness_tables
 from src.evaluation.summary import build_evaluation_summary, build_monotonicity_summary
 from src.evaluation.runner import build_rank_ic_artifact
 from src.research.experiment import ResearchRunConfig, initialize_experiment_layout
@@ -220,6 +223,112 @@ def test_build_fama_macbeth_tables_computes_coefficients_and_summary():
     assert round(slope["positive_ratio"], 6) == 1.0
 
 
+def test_build_factor_correlation_tables_computes_summary_and_matrix():
+    factor_panel = pd.DataFrame(
+        [
+            {"rebalance_date": "2024-01-31", "ts_code": "AAA", "is_eligible": True, "factor_size": 1.0, "factor_value": 2.0},
+            {"rebalance_date": "2024-01-31", "ts_code": "BBB", "is_eligible": True, "factor_size": 2.0, "factor_value": 4.0},
+            {"rebalance_date": "2024-01-31", "ts_code": "CCC", "is_eligible": True, "factor_size": 3.0, "factor_value": 6.0},
+            {"rebalance_date": "2024-02-29", "ts_code": "AAA", "is_eligible": True, "factor_size": 1.0, "factor_value": 3.0},
+            {"rebalance_date": "2024-02-29", "ts_code": "BBB", "is_eligible": True, "factor_size": 2.0, "factor_value": 2.0},
+            {"rebalance_date": "2024-02-29", "ts_code": "CCC", "is_eligible": True, "factor_size": 3.0, "factor_value": 1.0},
+            {"rebalance_date": "2024-02-29", "ts_code": "DDD", "is_eligible": False, "factor_size": 4.0, "factor_value": 0.0},
+        ]
+    )
+
+    corr_timeseries, corr_summary, corr_matrix = build_factor_correlation_tables(
+        factor_panel,
+        factor_names=("size", "value"),
+        factor_fields=("factor_size", "factor_value"),
+    )
+
+    pair_series = corr_timeseries.loc[
+        (corr_timeseries["left_factor_name"] == "size") & (corr_timeseries["right_factor_name"] == "value"),
+        "correlation",
+    ]
+    pair_summary = corr_summary.loc[
+        (corr_summary["left_factor_name"] == "size") & (corr_summary["right_factor_name"] == "value")
+    ].iloc[0]
+
+    assert pair_series.round(6).tolist() == [1.0, -1.0]
+    assert round(pair_summary["mean_correlation"], 6) == 0.0
+    assert round(pair_summary["mean_abs_correlation"], 6) == 1.0
+    assert corr_matrix.loc[corr_matrix["factor_name"] == "size", "value"].iloc[0] == 0.0
+    assert corr_matrix.loc[corr_matrix["factor_name"] == "value", "size"].iloc[0] == 0.0
+
+
+def test_build_redundancy_tables_computes_residual_signal_summary():
+    aligned_panel = pd.DataFrame(
+        [
+            {"rebalance_date": "2024-01-31", "ts_code": "AAA", "factor_size": 1.0, "factor_value": 1.0, "label_fwd_ret_1m": 1.0},
+            {"rebalance_date": "2024-01-31", "ts_code": "BBB", "factor_size": 2.0, "factor_value": 2.0, "label_fwd_ret_1m": 2.0},
+            {"rebalance_date": "2024-01-31", "ts_code": "CCC", "factor_size": 3.0, "factor_value": 3.0, "label_fwd_ret_1m": 3.0},
+            {"rebalance_date": "2024-02-29", "ts_code": "AAA", "factor_size": 1.0, "factor_value": 1.0, "label_fwd_ret_1m": 1.5},
+            {"rebalance_date": "2024-02-29", "ts_code": "BBB", "factor_size": 2.0, "factor_value": 2.0, "label_fwd_ret_1m": 2.5},
+            {"rebalance_date": "2024-02-29", "ts_code": "CCC", "factor_size": 3.0, "factor_value": 3.0, "label_fwd_ret_1m": 3.5},
+        ]
+    )
+    aligned_panel["rebalance_date"] = pd.to_datetime(aligned_panel["rebalance_date"])
+    evaluation_summary = pd.DataFrame(
+        [
+            {"factor_name": "size", "factor_field": "factor_size", "label_name": "fwd_ret_1m", "label_field": "label_fwd_ret_1m", "ic_mean": 1.0, "spread_mean": 1.0},
+            {"factor_name": "value", "factor_field": "factor_value", "label_name": "fwd_ret_1m", "label_field": "label_fwd_ret_1m", "ic_mean": 1.0, "spread_mean": 1.0},
+        ]
+    )
+
+    redundancy_timeseries, redundancy_summary = build_redundancy_tables(
+        aligned_panel,
+        factor_names=("size", "value"),
+        factor_fields=("factor_size", "factor_value"),
+        label_names=("fwd_ret_1m",),
+        label_fields=("label_fwd_ret_1m",),
+        quantile_count=3,
+        evaluation_summary=evaluation_summary,
+    )
+
+    assert len(redundancy_timeseries) == 4
+    assert redundancy_summary["mean_r2"].round(6).tolist() == [1.0, 1.0]
+    assert redundancy_summary["residual_ic_mean"].isna().all()
+    assert redundancy_summary["residual_spread_mean"].isna().all()
+
+
+def test_build_subperiod_robustness_tables_computes_period_summaries():
+    ic_timeseries = pd.DataFrame(
+        [
+            {"rebalance_date": "2024-01-31", "factor_name": "size", "factor_field": "factor_size", "label_name": "fwd_ret_1m", "label_field": "label_fwd_ret_1m", "rank_ic": 0.1},
+            {"rebalance_date": "2024-02-29", "factor_name": "size", "factor_field": "factor_size", "label_name": "fwd_ret_1m", "label_field": "label_fwd_ret_1m", "rank_ic": 0.2},
+            {"rebalance_date": "2024-03-31", "factor_name": "size", "factor_field": "factor_size", "label_name": "fwd_ret_1m", "label_field": "label_fwd_ret_1m", "rank_ic": -0.1},
+            {"rebalance_date": "2024-04-30", "factor_name": "size", "factor_field": "factor_size", "label_name": "fwd_ret_1m", "label_field": "label_fwd_ret_1m", "rank_ic": -0.2},
+        ]
+    )
+    spread_timeseries = pd.DataFrame(
+        [
+            {"rebalance_date": "2024-01-31", "factor_name": "size", "factor_field": "factor_size", "label_name": "fwd_ret_1m", "label_field": "label_fwd_ret_1m", "top_bottom_spread": 0.05},
+            {"rebalance_date": "2024-02-29", "factor_name": "size", "factor_field": "factor_size", "label_name": "fwd_ret_1m", "label_field": "label_fwd_ret_1m", "top_bottom_spread": 0.06},
+            {"rebalance_date": "2024-03-31", "factor_name": "size", "factor_field": "factor_size", "label_name": "fwd_ret_1m", "label_field": "label_fwd_ret_1m", "top_bottom_spread": -0.03},
+            {"rebalance_date": "2024-04-30", "factor_name": "size", "factor_field": "factor_size", "label_name": "fwd_ret_1m", "label_field": "label_fwd_ret_1m", "top_bottom_spread": -0.04},
+        ]
+    )
+    evaluation_summary = pd.DataFrame(
+        [
+            {"factor_name": "size", "factor_field": "factor_size", "label_name": "fwd_ret_1m", "label_field": "label_fwd_ret_1m", "ic_mean": 0.05, "spread_mean": 0.01}
+        ]
+    )
+
+    periods, subperiod_summary, robustness_summary = build_subperiod_robustness_tables(
+        ic_timeseries,
+        spread_timeseries,
+        evaluation_summary,
+        period_count=2,
+    )
+
+    assert len(periods) == 2
+    assert subperiod_summary["period_label"].tolist() == ["period_1", "period_2"]
+    assert subperiod_summary["ic_mean"].round(6).tolist() == [0.15, -0.15]
+    assert round(robustness_summary.loc[0, "ic_sign_consistent_ratio"], 6) == 0.5
+    assert round(robustness_summary.loc[0, "spread_sign_consistent_ratio"], 6) == 0.5
+
+
 def test_build_rank_ic_artifact_writes_output_and_manifest(tmp_path: Path):
     config = _make_config(tmp_path)
     config.ensure_directories()
@@ -279,6 +388,14 @@ def test_build_rank_ic_artifact_writes_output_and_manifest(tmp_path: Path):
     spread_summary_path = config.experiments_root / run_config.experiment_slug / "evaluation" / "top_bottom_spread_summary.parquet"
     monotonicity_summary_path = config.experiments_root / run_config.experiment_slug / "evaluation" / "monotonicity_summary.parquet"
     evaluation_summary_path = config.experiments_root / run_config.experiment_slug / "evaluation" / "evaluation_summary.parquet"
+    factor_correlation_timeseries_path = config.experiments_root / run_config.experiment_slug / "evaluation" / "factor_correlation_timeseries.parquet"
+    factor_correlation_summary_path = config.experiments_root / run_config.experiment_slug / "evaluation" / "factor_correlation_summary.parquet"
+    factor_correlation_matrix_path = config.experiments_root / run_config.experiment_slug / "evaluation" / "factor_correlation_matrix.parquet"
+    redundancy_timeseries_path = config.experiments_root / run_config.experiment_slug / "evaluation" / "redundancy_timeseries.parquet"
+    redundancy_summary_path = config.experiments_root / run_config.experiment_slug / "evaluation" / "redundancy_summary.parquet"
+    robustness_periods_path = config.experiments_root / run_config.experiment_slug / "evaluation" / "robustness_periods.parquet"
+    subperiod_summary_path = config.experiments_root / run_config.experiment_slug / "evaluation" / "subperiod_summary.parquet"
+    robustness_summary_path = config.experiments_root / run_config.experiment_slug / "evaluation" / "robustness_summary.parquet"
     fama_macbeth_timeseries_path = config.experiments_root / run_config.experiment_slug / "evaluation" / "fama_macbeth_timeseries.parquet"
     fama_macbeth_summary_path = config.experiments_root / run_config.experiment_slug / "evaluation" / "fama_macbeth_summary.parquet"
     manifest_path = config.experiments_root / run_config.experiment_slug / "evaluation" / "rank_ic_manifest.json"
@@ -291,6 +408,14 @@ def test_build_rank_ic_artifact_writes_output_and_manifest(tmp_path: Path):
     assert result["spread_summary_rows"] == 0
     assert result["monotonicity_summary_rows"] == 0
     assert result["evaluation_summary_rows"] == 1
+    assert result["factor_correlation_timeseries_rows"] == 2
+    assert result["factor_correlation_summary_rows"] == 1
+    assert result["factor_correlation_matrix_rows"] == 1
+    assert result["redundancy_timeseries_rows"] == 0
+    assert result["redundancy_summary_rows"] == 0
+    assert result["robustness_periods_rows"] == 2
+    assert result["subperiod_summary_rows"] == 2
+    assert result["robustness_summary_rows"] == 1
     assert result["fama_macbeth_timeseries_rows"] == 4
     assert result["fama_macbeth_summary_rows"] == 2
     assert timeseries_path.exists()
@@ -301,6 +426,14 @@ def test_build_rank_ic_artifact_writes_output_and_manifest(tmp_path: Path):
     assert spread_summary_path.exists()
     assert monotonicity_summary_path.exists()
     assert evaluation_summary_path.exists()
+    assert factor_correlation_timeseries_path.exists()
+    assert factor_correlation_summary_path.exists()
+    assert factor_correlation_matrix_path.exists()
+    assert redundancy_timeseries_path.exists()
+    assert redundancy_summary_path.exists()
+    assert robustness_periods_path.exists()
+    assert subperiod_summary_path.exists()
+    assert robustness_summary_path.exists()
     assert fama_macbeth_timeseries_path.exists()
     assert fama_macbeth_summary_path.exists()
     assert manifest_path.exists()
