@@ -6,6 +6,7 @@ from pathlib import Path
 import pandas as pd
 
 from src.config import AppConfig
+from src.evaluation.fama_macbeth import build_fama_macbeth_tables
 from src.evaluation.ic import build_evaluation_input, build_rank_ic_tables
 from src.evaluation.portfolio import build_quantile_portfolio_tables
 from src.evaluation.summary import build_evaluation_summary, build_monotonicity_summary
@@ -186,6 +187,39 @@ def test_build_monotonicity_summary_and_evaluation_summary():
     assert round(evaluation_summary.loc[0, "spread_mean"], 6) == 0.4
 
 
+def test_build_fama_macbeth_tables_computes_coefficients_and_summary():
+    panel_df = pd.DataFrame(
+        [
+            {"rebalance_date": "2024-01-31", "ts_code": "AAA", "factor_size": 1.0, "label_fwd_ret_1m": 2.0},
+            {"rebalance_date": "2024-01-31", "ts_code": "BBB", "factor_size": 2.0, "label_fwd_ret_1m": 3.0},
+            {"rebalance_date": "2024-01-31", "ts_code": "CCC", "factor_size": 3.0, "label_fwd_ret_1m": 4.0},
+            {"rebalance_date": "2024-02-29", "ts_code": "AAA", "factor_size": 1.0, "label_fwd_ret_1m": 1.5},
+            {"rebalance_date": "2024-02-29", "ts_code": "BBB", "factor_size": 2.0, "label_fwd_ret_1m": 2.5},
+            {"rebalance_date": "2024-02-29", "ts_code": "CCC", "factor_size": 3.0, "label_fwd_ret_1m": 3.5},
+        ]
+    )
+    panel_df["rebalance_date"] = pd.to_datetime(panel_df["rebalance_date"])
+
+    fama_timeseries, fama_summary = build_fama_macbeth_tables(
+        panel_df,
+        factor_names=("size",),
+        factor_fields=("factor_size",),
+        label_names=("fwd_ret_1m",),
+        label_fields=("label_fwd_ret_1m",),
+    )
+
+    intercept_series = fama_timeseries.loc[fama_timeseries["term_name"] == "intercept", "coefficient"]
+    slope_series = fama_timeseries.loc[fama_timeseries["term_name"] == "size", "coefficient"]
+    assert intercept_series.round(6).tolist() == [1.0, 0.5]
+    assert slope_series.round(6).tolist() == [1.0, 1.0]
+    intercept = fama_summary.loc[fama_summary["term_name"] == "intercept"].iloc[0]
+    slope = fama_summary.loc[fama_summary["term_name"] == "size"].iloc[0]
+    assert intercept["observation_months"] == 2
+    assert round(intercept["coef_mean"], 6) == 0.75
+    assert round(slope["coef_mean"], 6) == 1.0
+    assert round(slope["positive_ratio"], 6) == 1.0
+
+
 def test_build_rank_ic_artifact_writes_output_and_manifest(tmp_path: Path):
     config = _make_config(tmp_path)
     config.ensure_directories()
@@ -245,6 +279,8 @@ def test_build_rank_ic_artifact_writes_output_and_manifest(tmp_path: Path):
     spread_summary_path = config.experiments_root / run_config.experiment_slug / "evaluation" / "top_bottom_spread_summary.parquet"
     monotonicity_summary_path = config.experiments_root / run_config.experiment_slug / "evaluation" / "monotonicity_summary.parquet"
     evaluation_summary_path = config.experiments_root / run_config.experiment_slug / "evaluation" / "evaluation_summary.parquet"
+    fama_macbeth_timeseries_path = config.experiments_root / run_config.experiment_slug / "evaluation" / "fama_macbeth_timeseries.parquet"
+    fama_macbeth_summary_path = config.experiments_root / run_config.experiment_slug / "evaluation" / "fama_macbeth_summary.parquet"
     manifest_path = config.experiments_root / run_config.experiment_slug / "evaluation" / "rank_ic_manifest.json"
 
     assert result["timeseries_rows"] == 2
@@ -255,6 +291,8 @@ def test_build_rank_ic_artifact_writes_output_and_manifest(tmp_path: Path):
     assert result["spread_summary_rows"] == 0
     assert result["monotonicity_summary_rows"] == 0
     assert result["evaluation_summary_rows"] == 1
+    assert result["fama_macbeth_timeseries_rows"] == 4
+    assert result["fama_macbeth_summary_rows"] == 2
     assert timeseries_path.exists()
     assert summary_path.exists()
     assert quantile_timeseries_path.exists()
@@ -263,6 +301,8 @@ def test_build_rank_ic_artifact_writes_output_and_manifest(tmp_path: Path):
     assert spread_summary_path.exists()
     assert monotonicity_summary_path.exists()
     assert evaluation_summary_path.exists()
+    assert fama_macbeth_timeseries_path.exists()
+    assert fama_macbeth_summary_path.exists()
     assert manifest_path.exists()
 
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))

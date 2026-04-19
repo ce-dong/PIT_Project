@@ -7,6 +7,7 @@ from typing import Any
 
 from src.config import AppConfig
 from src.evaluation.base import EvaluationContext
+from src.evaluation.fama_macbeth import build_fama_macbeth_tables
 from src.evaluation.ic import RankICEvaluator, build_evaluation_input
 from src.evaluation.portfolio import build_quantile_portfolio_tables
 from src.evaluation.summary import build_evaluation_summary, build_monotonicity_summary
@@ -110,6 +111,13 @@ def build_rank_ic_artifact(
         spread_summary,
         monotonicity_summary,
     )
+    fama_macbeth_timeseries, fama_macbeth_summary = build_fama_macbeth_tables(
+        aligned_panel,
+        factor_names=context.factor_names,
+        factor_fields=context.factor_fields,
+        label_names=context.label_names,
+        label_fields=context.label_fields,
+    )
 
     evaluation_root = run_paths.stage_roots["evaluation"]
     timeseries_path = evaluation_root / "rank_ic_timeseries.parquet"
@@ -120,13 +128,22 @@ def build_rank_ic_artifact(
     spread_summary_path = evaluation_root / "top_bottom_spread_summary.parquet"
     monotonicity_summary_path = evaluation_root / "monotonicity_summary.parquet"
     evaluation_summary_path = evaluation_root / "evaluation_summary.parquet"
+    fama_macbeth_timeseries_path = evaluation_root / "fama_macbeth_timeseries.parquet"
+    fama_macbeth_summary_path = evaluation_root / "fama_macbeth_summary.parquet"
     manifest_path = evaluation_root / "rank_ic_manifest.json"
     output_paths: list[str] = []
 
     manifest = {
         "experiment_name": run_config.experiment_name,
         "experiment_slug": run_config.experiment_slug,
-        "metrics": [evaluator.name, "quantile_portfolio", "top_bottom_spread", "monotonicity_check", "evaluation_summary"],
+        "metrics": [
+            evaluator.name,
+            "quantile_portfolio",
+            "top_bottom_spread",
+            "monotonicity_check",
+            "evaluation_summary",
+            "fama_macbeth",
+        ],
         "factor_names": list(context.factor_names),
         "label_names": list(context.label_names),
         "quantile_count": context.quantile_count,
@@ -138,6 +155,8 @@ def build_rank_ic_artifact(
         "spread_summary_path": str(spread_summary_path),
         "monotonicity_summary_path": str(monotonicity_summary_path),
         "evaluation_summary_path": str(evaluation_summary_path),
+        "fama_macbeth_timeseries_path": str(fama_macbeth_timeseries_path),
+        "fama_macbeth_summary_path": str(fama_macbeth_summary_path),
         "created_at": _now_iso(),
     }
 
@@ -150,6 +169,8 @@ def build_rank_ic_artifact(
         spread_summary.to_parquet(spread_summary_path, index=False)
         monotonicity_summary.to_parquet(monotonicity_summary_path, index=False)
         evaluation_summary.to_parquet(evaluation_summary_path, index=False)
+        fama_macbeth_timeseries.to_parquet(fama_macbeth_timeseries_path, index=False)
+        fama_macbeth_summary.to_parquet(fama_macbeth_summary_path, index=False)
         manifest_path.write_text(json.dumps(manifest, indent=2, ensure_ascii=True) + "\n", encoding="utf-8")
         output_paths = [
             str(timeseries_path.relative_to(config.project_root)),
@@ -160,6 +181,8 @@ def build_rank_ic_artifact(
             str(spread_summary_path.relative_to(config.project_root)),
             str(monotonicity_summary_path.relative_to(config.project_root)),
             str(evaluation_summary_path.relative_to(config.project_root)),
+            str(fama_macbeth_timeseries_path.relative_to(config.project_root)),
+            str(fama_macbeth_summary_path.relative_to(config.project_root)),
         ]
 
     return {
@@ -175,6 +198,8 @@ def build_rank_ic_artifact(
         "spread_summary_rows": len(spread_summary),
         "monotonicity_summary_rows": len(monotonicity_summary),
         "evaluation_summary_rows": len(evaluation_summary),
+        "fama_macbeth_timeseries_rows": len(fama_macbeth_timeseries),
+        "fama_macbeth_summary_rows": len(fama_macbeth_summary),
         "factor_names": list(context.factor_names),
         "label_names": list(context.label_names),
         "quantile_count": context.quantile_count,
@@ -187,6 +212,8 @@ def build_rank_ic_artifact(
         "spread_summary_path": str(spread_summary_path.relative_to(config.project_root)),
         "monotonicity_summary_path": str(monotonicity_summary_path.relative_to(config.project_root)),
         "evaluation_summary_path": str(evaluation_summary_path.relative_to(config.project_root)),
+        "fama_macbeth_timeseries_path": str(fama_macbeth_timeseries_path.relative_to(config.project_root)),
+        "fama_macbeth_summary_path": str(fama_macbeth_summary_path.relative_to(config.project_root)),
         "artifact_manifest_path": str(manifest_path.relative_to(config.project_root)),
         "started_at": started_at,
         "finished_at": _now_iso(),
