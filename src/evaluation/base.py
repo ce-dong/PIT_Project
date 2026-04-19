@@ -20,6 +20,7 @@ class EvaluationContext:
     factor_fields: tuple[str, ...] = ()
     label_names: tuple[str, ...] = ()
     label_fields: tuple[str, ...] = ()
+    quantile_count: int = 5
 
 
 class BaseEvaluator:

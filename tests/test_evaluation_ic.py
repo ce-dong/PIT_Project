@@ -7,6 +7,7 @@ import pandas as pd
 
 from src.config import AppConfig
 from src.evaluation.ic import build_evaluation_input, build_rank_ic_tables
+from src.evaluation.portfolio import build_quantile_portfolio_tables
 from src.evaluation.runner import build_rank_ic_artifact
 from src.research.experiment import ResearchRunConfig, initialize_experiment_layout
 from src.storage.parquet import ParquetDataStore
@@ -99,6 +100,39 @@ def test_build_rank_ic_tables_computes_timeseries_and_summary():
     assert round(ic_summary.loc[0, "ic_hit_rate"], 6) == 0.5
 
 
+def test_build_quantile_portfolio_tables_computes_quantiles_and_top_bottom_spread():
+    panel_df = pd.DataFrame(
+        [
+            {"rebalance_date": "2024-01-31", "ts_code": "AAA", "factor_size": 1.0, "label_fwd_ret_1m": 0.1},
+            {"rebalance_date": "2024-01-31", "ts_code": "BBB", "factor_size": 2.0, "label_fwd_ret_1m": 0.2},
+            {"rebalance_date": "2024-01-31", "ts_code": "CCC", "factor_size": 3.0, "label_fwd_ret_1m": 0.3},
+            {"rebalance_date": "2024-01-31", "ts_code": "DDD", "factor_size": 4.0, "label_fwd_ret_1m": 0.4},
+            {"rebalance_date": "2024-01-31", "ts_code": "EEE", "factor_size": 5.0, "label_fwd_ret_1m": 0.5},
+            {"rebalance_date": "2024-02-29", "ts_code": "AAA", "factor_size": 1.0, "label_fwd_ret_1m": 0.5},
+            {"rebalance_date": "2024-02-29", "ts_code": "BBB", "factor_size": 2.0, "label_fwd_ret_1m": 0.4},
+            {"rebalance_date": "2024-02-29", "ts_code": "CCC", "factor_size": 3.0, "label_fwd_ret_1m": 0.3},
+            {"rebalance_date": "2024-02-29", "ts_code": "DDD", "factor_size": 4.0, "label_fwd_ret_1m": 0.2},
+            {"rebalance_date": "2024-02-29", "ts_code": "EEE", "factor_size": 5.0, "label_fwd_ret_1m": 0.1},
+        ]
+    )
+    panel_df["rebalance_date"] = pd.to_datetime(panel_df["rebalance_date"])
+
+    quantile_timeseries, quantile_summary, spread_timeseries, spread_summary = build_quantile_portfolio_tables(
+        panel_df,
+        factor_names=("size",),
+        factor_fields=("factor_size",),
+        label_names=("fwd_ret_1m",),
+        label_fields=("label_fwd_ret_1m",),
+        quantile_count=5,
+    )
+
+    assert quantile_timeseries["quantile_return"].round(6).tolist()[:5] == [0.1, 0.5, 0.2, 0.4, 0.3]
+    assert spread_timeseries["top_bottom_spread"].round(6).tolist() == [0.4, -0.4]
+    assert quantile_summary.loc[quantile_summary["quantile"] == 1, "mean_return"].iloc[0] == 0.3
+    assert round(spread_summary.loc[0, "spread_mean"], 6) == 0.0
+    assert round(spread_summary.loc[0, "spread_hit_rate"], 6) == 0.5
+
+
 def test_build_rank_ic_artifact_writes_output_and_manifest(tmp_path: Path):
     config = _make_config(tmp_path)
     config.ensure_directories()
@@ -152,14 +186,27 @@ def test_build_rank_ic_artifact_writes_output_and_manifest(tmp_path: Path):
 
     timeseries_path = config.experiments_root / run_config.experiment_slug / "evaluation" / "rank_ic_timeseries.parquet"
     summary_path = config.experiments_root / run_config.experiment_slug / "evaluation" / "rank_ic_summary.parquet"
+    quantile_timeseries_path = config.experiments_root / run_config.experiment_slug / "evaluation" / "quantile_returns.parquet"
+    quantile_summary_path = config.experiments_root / run_config.experiment_slug / "evaluation" / "quantile_summary.parquet"
+    spread_timeseries_path = config.experiments_root / run_config.experiment_slug / "evaluation" / "top_bottom_spread_timeseries.parquet"
+    spread_summary_path = config.experiments_root / run_config.experiment_slug / "evaluation" / "top_bottom_spread_summary.parquet"
     manifest_path = config.experiments_root / run_config.experiment_slug / "evaluation" / "rank_ic_manifest.json"
 
     assert result["timeseries_rows"] == 2
     assert result["summary_rows"] == 1
+    assert result["quantile_timeseries_rows"] == 0
+    assert result["quantile_summary_rows"] == 0
+    assert result["spread_timeseries_rows"] == 0
+    assert result["spread_summary_rows"] == 0
     assert timeseries_path.exists()
     assert summary_path.exists()
+    assert quantile_timeseries_path.exists()
+    assert quantile_summary_path.exists()
+    assert spread_timeseries_path.exists()
+    assert spread_summary_path.exists()
     assert manifest_path.exists()
 
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     assert manifest["factor_names"] == ["size"]
     assert manifest["label_names"] == ["fwd_ret_1m"]
+    assert manifest["quantile_count"] == 5
