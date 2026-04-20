@@ -9,6 +9,7 @@ import pandas as pd
 
 from src.config import AppConfig
 from src.reports.base import ReportContext
+from src.reports.charts import generate_report_charts
 from src.reports.markdown import MarkdownResearchReportBuilder
 from src.research.experiment import ResearchRunConfig, resolve_research_paths
 
@@ -44,6 +45,7 @@ def build_research_report(
         "evaluation_summary": _read_parquet(evaluation_root / "evaluation_summary.parquet"),
         "fama_macbeth_summary": _read_parquet(evaluation_root / "fama_macbeth_summary.parquet"),
         "factor_correlation_summary": _read_parquet(evaluation_root / "factor_correlation_summary.parquet"),
+        "factor_correlation_matrix": _read_parquet(evaluation_root / "factor_correlation_matrix.parquet"),
         "redundancy_summary": _read_parquet(evaluation_root / "redundancy_summary.parquet"),
         "robustness_summary": _read_parquet(evaluation_root / "robustness_summary.parquet"),
     }
@@ -53,6 +55,8 @@ def build_research_report(
         as_of_date=run_config.as_of_date,
     )
     builder = MarkdownResearchReportBuilder()
+    chart_paths = generate_report_charts(payload, reports_root)
+    payload["chart_paths"] = chart_paths
     report_text = builder.build(payload, context)
 
     report_path = reports_root / context.output_file_name
@@ -63,6 +67,7 @@ def build_research_report(
         "experiment_slug": run_config.experiment_slug,
         "report_builder": builder.name,
         "report_path": str(report_path),
+        "chart_paths": chart_paths,
         "generated_at": _now_iso(),
     }
 
@@ -73,6 +78,7 @@ def build_research_report(
         output_paths = [
             str(report_path.relative_to(config.project_root)),
             str(report_manifest_path.relative_to(config.project_root)),
+            *[str((reports_root / file_name).relative_to(config.project_root)) for file_name in chart_paths.values()],
         ]
 
     return {

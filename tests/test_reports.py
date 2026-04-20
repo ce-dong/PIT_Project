@@ -49,6 +49,12 @@ def _make_config(project_root: Path) -> AppConfig:
 def _sample_payload() -> dict[str, object]:
     return {
         "manifest": {"factor_names": ["size", "value"], "label_names": ["fwd_ret_1m"]},
+        "chart_paths": {
+            "ic_leaderboard": "ic_leaderboard.png",
+            "spread_leaderboard": "spread_leaderboard.png",
+            "correlation_heatmap": "factor_correlation_heatmap.png",
+            "robustness_consistency": "robustness_consistency.png",
+        },
         "evaluation_summary": pd.DataFrame(
             [
                 {"factor_name": "size", "label_name": "fwd_ret_1m", "ic_mean": 0.12, "icir": 0.8, "spread_mean": 0.03, "spread_ir": 0.5, "mean_is_monotonic": True, "monotonic_hit_rate": 0.7},
@@ -64,6 +70,12 @@ def _sample_payload() -> dict[str, object]:
         "factor_correlation_summary": pd.DataFrame(
             [
                 {"left_factor_name": "size", "right_factor_name": "value", "mean_correlation": 0.6, "mean_abs_correlation": 0.6},
+            ]
+        ),
+        "factor_correlation_matrix": pd.DataFrame(
+            [
+                {"factor_name": "size", "size": 1.0, "value": 0.6},
+                {"factor_name": "value", "size": 0.6, "value": 1.0},
             ]
         ),
         "redundancy_summary": pd.DataFrame(
@@ -91,6 +103,7 @@ def test_render_research_report_includes_key_sections():
     assert "# Factor Research Report" in report
     assert "## Strongest IC Signals" in report
     assert "## Highest Correlation Pairs" in report
+    assert "## Charts" in report
     assert "`agent2_baseline`" in report
     assert "size" in report
 
@@ -113,6 +126,7 @@ def test_build_research_report_writes_markdown_and_manifest(tmp_path: Path):
     _sample_payload()["evaluation_summary"].to_parquet(evaluation_root / "evaluation_summary.parquet", index=False)
     _sample_payload()["fama_macbeth_summary"].to_parquet(evaluation_root / "fama_macbeth_summary.parquet", index=False)
     _sample_payload()["factor_correlation_summary"].to_parquet(evaluation_root / "factor_correlation_summary.parquet", index=False)
+    _sample_payload()["factor_correlation_matrix"].to_parquet(evaluation_root / "factor_correlation_matrix.parquet", index=False)
     _sample_payload()["redundancy_summary"].to_parquet(evaluation_root / "redundancy_summary.parquet", index=False)
     _sample_payload()["robustness_summary"].to_parquet(evaluation_root / "robustness_summary.parquet", index=False)
 
@@ -120,7 +134,10 @@ def test_build_research_report_writes_markdown_and_manifest(tmp_path: Path):
 
     report_path = config.experiments_root / run_config.experiment_slug / "reports" / "research_report.md"
     manifest_path = config.experiments_root / run_config.experiment_slug / "reports" / "report_manifest.json"
+    ic_chart_path = config.experiments_root / run_config.experiment_slug / "reports" / "ic_leaderboard.png"
     assert report_path.exists()
     assert manifest_path.exists()
+    assert ic_chart_path.exists()
     assert result["report_builder"] == "markdown"
+    assert any(path.endswith("ic_leaderboard.png") for path in result["output_paths"])
     assert "Strongest IC Signals" in report_path.read_text(encoding="utf-8")

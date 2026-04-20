@@ -40,6 +40,7 @@ def render_research_report(payload: dict[str, Any], *, generated_at: datetime, c
     redundancy_summary: pd.DataFrame = payload["redundancy_summary"]
     robustness_summary: pd.DataFrame = payload["robustness_summary"]
     manifest: dict[str, Any] = payload["manifest"]
+    chart_paths: dict[str, str] = payload.get("chart_paths", {})
 
     top_ic = evaluation_summary.sort_values("ic_mean", ascending=False).head(5)
     weakest_ic = evaluation_summary.sort_values("ic_mean", ascending=True).head(5)
@@ -68,6 +69,22 @@ def render_research_report(payload: dict[str, Any], *, generated_at: datetime, c
     lines.append(f"- Redundancy rows: `{len(redundancy_summary)}`")
     lines.append(f"- Robustness rows: `{len(robustness_summary)}`")
     lines.append("")
+
+    if chart_paths:
+        lines.append("## Charts")
+        lines.append("")
+        if "ic_leaderboard" in chart_paths:
+            lines.append(f"![IC Leaderboard]({chart_paths['ic_leaderboard']})")
+            lines.append("")
+        if "spread_leaderboard" in chart_paths:
+            lines.append(f"![Spread Leaderboard]({chart_paths['spread_leaderboard']})")
+            lines.append("")
+        if "correlation_heatmap" in chart_paths:
+            lines.append(f"![Factor Correlation Heatmap]({chart_paths['correlation_heatmap']})")
+            lines.append("")
+        if "robustness_consistency" in chart_paths:
+            lines.append(f"![Robustness Consistency]({chart_paths['robustness_consistency']})")
+            lines.append("")
 
     lines.append("## Strongest IC Signals")
     lines.append("")
