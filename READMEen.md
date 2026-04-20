@@ -259,6 +259,9 @@ Related documents:
 - [docs/quality_checks.md](docs/quality_checks.md)
 - [docs/pit_rules.md](docs/pit_rules.md)
 - [docs/data_contract.md](docs/data_contract.md)
+- [docs/methodology_spec_v1.md](docs/methodology_spec_v1.md)
+- [docs/factor_library_v1.md](docs/factor_library_v1.md)
+- [docs/sample_experiment_agent2_baseline.md](docs/sample_experiment_agent2_baseline.md)
 
 ## Tests
 
