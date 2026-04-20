@@ -54,8 +54,24 @@
 统一预处理口径当前支持：
 
 - 横截面 winsorize
+- 行业/板块中性化
+- 市值中性化
 - 横截面 z-score
 - 覆盖率统计
+
+当前默认预处理顺序为：
+
+- `winsorize`
+- `industry_neutralize`
+- `size_neutralize`
+- `zscore`
+
+中性化的具体口径是：
+
+- 行业中性化：在每个 `rebalance_date` 的横截面上，优先按 `industry` 分组做组内去均值；若底座暂时没有 `industry`，则回退到 `market` 分组
+- 市值中性化：在每个 `rebalance_date` 的横截面上，对因子值关于 `log(total_mv)` 做一次线性回归，并取回归残差作为市值中性化后的结果
+
+这个设计的目标是先剔除横截面的行业公共成分和线性市值暴露，再做最终标准化，使评估结果更接近标准因子研究流程。
 
 ## Point-in-Time 研究口径
 

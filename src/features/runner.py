@@ -4,6 +4,8 @@ import json
 from datetime import datetime, timezone
 from typing import Any
 
+import pandas as pd
+
 from src.config import AppConfig
 from src.features.base import FeatureContext
 from src.features.computation import DAILY_RISK_FACTOR_NAMES, DefaultFeatureBuilder
@@ -20,10 +22,32 @@ def _required_snapshot_columns(factor_names: tuple[str, ...]) -> list[str]:
     base_columns = {"rebalance_date", "trade_execution_date", "ts_code", "is_eligible", "exclude_reason", "year", "month", "adj_close"}
     for name in factor_names:
         spec = FACTOR_REGISTRY.get(name)
+        if "size_neutralize" in spec.preprocess:
+            base_columns.add("total_mv")
+        if "industry_neutralize" in spec.preprocess:
+            base_columns.add("market")
+            base_columns.add("industry")
         for input_field in spec.inputs:
             if input_field.startswith("monthly_snapshot_base."):
                 base_columns.add(input_field.split(".", 1)[1])
     return sorted(base_columns)
+
+
+def _read_snapshot_with_optional_columns(lake_store: ParquetDataStore, columns: list[str]) -> pd.DataFrame:
+    optional_columns = {"industry"}
+    try:
+        return lake_store.read_table("monthly_snapshot_base", columns=columns)
+    except Exception as error:
+        message = str(error)
+        if not any(optional in message for optional in optional_columns):
+            raise
+
+        available_columns = [column for column in columns if column not in optional_columns]
+        snapshot_df = lake_store.read_table("monthly_snapshot_base", columns=available_columns)
+        for column in columns:
+            if column not in snapshot_df.columns:
+                snapshot_df[column] = pd.NA
+        return snapshot_df.loc[:, columns]
 
 
 def build_factor_panel_artifact(
@@ -45,12 +69,10 @@ def build_factor_panel_artifact(
     run_paths = resolve_research_paths(config, run_config)
 
     snapshot_columns = _required_snapshot_columns(selected_names)
-    snapshot_df = lake_store.read_table("monthly_snapshot_base", columns=snapshot_columns)
+    snapshot_df = _read_snapshot_with_optional_columns(lake_store, snapshot_columns)
 
     adjusted_price_df = lake_store.read_table("adjusted_price_panel", columns=["ts_code", "trade_date", "adj_close", "amount"]) if set(selected_names) & DAILY_RISK_FACTOR_NAMES else None
     if adjusted_price_df is None:
-        import pandas as pd
-
         adjusted_price_df = pd.DataFrame(columns=["ts_code", "trade_date", "adj_close", "amount"])
 
     context = FeatureContext(
@@ -71,6 +93,7 @@ def build_factor_panel_artifact(
         "factor_names": list(selected_names),
         "output_table_name": table_name,
         "output_fields": [spec.output_field for spec in selected_specs],
+        "preprocess_profiles": {spec.name: list(spec.preprocess) for spec in selected_specs},
         "created_at": _now_iso(),
     }
 

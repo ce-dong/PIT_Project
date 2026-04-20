@@ -54,8 +54,24 @@ The current V1 factor library contains 24 factors across 5 families:
 Current preprocessing support includes:
 
 - cross-sectional winsorization
+- industry/board neutralization
+- size neutralization
 - cross-sectional z-score standardization
 - coverage monitoring
+
+The default preprocessing order is:
+
+- `winsorize`
+- `industry_neutralize`
+- `size_neutralize`
+- `zscore`
+
+The neutralization logic is currently implemented as:
+
+- Industry neutralization: within each `rebalance_date`, de-mean the factor cross section by `industry`; if `industry` is not available in the base panel, fall back to `market`
+- Size neutralization: within each `rebalance_date`, regress the factor on `log(total_mv)` and keep the cross-sectional residual
+
+This setup removes broad industry components and linear size exposure before the final standardization step.
 
 ## Point-in-Time Methodology
 

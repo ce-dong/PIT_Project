@@ -49,6 +49,12 @@ def _make_config(project_root: Path) -> AppConfig:
 def _sample_payload() -> dict[str, object]:
     return {
         "manifest": {"factor_names": ["size", "value"], "label_names": ["fwd_ret_1m"]},
+        "factor_manifest": {
+            "preprocess_profiles": {
+                "size": ["winsorize", "industry_neutralize", "zscore"],
+                "value": ["winsorize", "industry_neutralize", "size_neutralize", "zscore"],
+            }
+        },
         "chart_paths": {
             "ic_leaderboard": "ic_leaderboard.png",
             "spread_leaderboard": "spread_leaderboard.png",
@@ -88,6 +94,12 @@ def _sample_payload() -> dict[str, object]:
                 {"factor_name": "size", "label_name": "fwd_ret_1m", "ic_sign_consistent_ratio": 1.0, "spread_sign_consistent_ratio": 0.67},
             ]
         ),
+        "subperiod_summary": pd.DataFrame(
+            [
+                {"factor_name": "size", "label_name": "fwd_ret_1m", "period_label": "P1", "ic_mean": 0.10, "spread_mean": 0.02},
+                {"factor_name": "value", "label_name": "fwd_ret_1m", "period_label": "P2", "ic_mean": 0.08, "spread_mean": 0.01},
+            ]
+        ),
     }
 
 
@@ -101,7 +113,10 @@ def test_render_research_report_includes_key_sections():
     )
 
     assert "# Factor Research Report" in report
+    assert "## Key Takeaways" in report
+    assert "## Methodology Snapshot" in report
     assert "## Strongest IC Signals" in report
+    assert "## Robustness Leaders" in report
     assert "## Highest Correlation Pairs" in report
     assert "## Charts" in report
     assert "`agent2_baseline`" in report
@@ -123,12 +138,19 @@ def test_build_research_report_writes_markdown_and_manifest(tmp_path: Path):
         json.dumps({"factor_names": ["size", "value"], "label_names": ["fwd_ret_1m"]}, indent=2, ensure_ascii=True) + "\n",
         encoding="utf-8",
     )
+    feature_manifest_root = config.experiments_root / run_config.experiment_slug / "features"
+    feature_manifest_root.mkdir(parents=True, exist_ok=True)
+    (feature_manifest_root / "factor_panel_manifest.json").write_text(
+        json.dumps(_sample_payload()["factor_manifest"], indent=2, ensure_ascii=True) + "\n",
+        encoding="utf-8",
+    )
     _sample_payload()["evaluation_summary"].to_parquet(evaluation_root / "evaluation_summary.parquet", index=False)
     _sample_payload()["fama_macbeth_summary"].to_parquet(evaluation_root / "fama_macbeth_summary.parquet", index=False)
     _sample_payload()["factor_correlation_summary"].to_parquet(evaluation_root / "factor_correlation_summary.parquet", index=False)
     _sample_payload()["factor_correlation_matrix"].to_parquet(evaluation_root / "factor_correlation_matrix.parquet", index=False)
     _sample_payload()["redundancy_summary"].to_parquet(evaluation_root / "redundancy_summary.parquet", index=False)
     _sample_payload()["robustness_summary"].to_parquet(evaluation_root / "robustness_summary.parquet", index=False)
+    _sample_payload()["subperiod_summary"].to_parquet(evaluation_root / "subperiod_summary.parquet", index=False)
 
     result = build_research_report(config, run_config)
 
@@ -140,4 +162,5 @@ def test_build_research_report_writes_markdown_and_manifest(tmp_path: Path):
     assert ic_chart_path.exists()
     assert result["report_builder"] == "markdown"
     assert any(path.endswith("ic_leaderboard.png") for path in result["output_paths"])
+    assert "Key Takeaways" in report_path.read_text(encoding="utf-8")
     assert "Strongest IC Signals" in report_path.read_text(encoding="utf-8")

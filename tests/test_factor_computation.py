@@ -3,10 +3,12 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 
 from src.config import AppConfig
 from src.features.computation import build_factor_panel
+from src.features.preprocessing import apply_cross_section_preprocess
 from src.features.registry import FACTOR_REGISTRY
 from src.features.runner import build_factor_panel_artifact
 from src.research.experiment import ResearchRunConfig, initialize_experiment_layout
@@ -102,6 +104,48 @@ def test_build_factor_panel_computes_daily_risk_factors():
     assert result["factor_idiosyncratic_volatility_raw"].notna().all()
 
 
+def test_apply_cross_section_preprocess_industry_neutralize_uses_market_fallback():
+    frame = pd.DataFrame(
+        [
+            {"rebalance_date": "2024-01-31", "ts_code": "AAA", "is_eligible": True, "market": "main_board", "factor_raw": 1.0},
+            {"rebalance_date": "2024-01-31", "ts_code": "BBB", "is_eligible": True, "market": "main_board", "factor_raw": 3.0},
+            {"rebalance_date": "2024-01-31", "ts_code": "CCC", "is_eligible": True, "market": "chinext", "factor_raw": 10.0},
+            {"rebalance_date": "2024-01-31", "ts_code": "DDD", "is_eligible": True, "market": "chinext", "factor_raw": 14.0},
+        ]
+    )
+
+    result = apply_cross_section_preprocess(
+        frame,
+        raw_col="factor_raw",
+        output_col="factor_processed",
+        steps=("industry_neutralize",),
+    )
+
+    market_means = result.groupby("market", sort=False)["factor_processed"].mean()
+    assert abs(market_means.loc["main_board"]) < 1e-12
+    assert abs(market_means.loc["chinext"]) < 1e-12
+
+
+def test_apply_cross_section_preprocess_size_neutralize_removes_log_size_exposure():
+    frame = pd.DataFrame(
+        [
+            {"rebalance_date": "2024-01-31", "ts_code": "AAA", "is_eligible": True, "total_mv": 10.0, "factor_raw": 1.0 + 2.0 * np.log(10.0)},
+            {"rebalance_date": "2024-01-31", "ts_code": "BBB", "is_eligible": True, "total_mv": 20.0, "factor_raw": 1.0 + 2.0 * np.log(20.0)},
+            {"rebalance_date": "2024-01-31", "ts_code": "CCC", "is_eligible": True, "total_mv": 40.0, "factor_raw": 1.0 + 2.0 * np.log(40.0)},
+            {"rebalance_date": "2024-01-31", "ts_code": "DDD", "is_eligible": True, "total_mv": 80.0, "factor_raw": 1.0 + 2.0 * np.log(80.0)},
+        ]
+    )
+
+    result = apply_cross_section_preprocess(
+        frame,
+        raw_col="factor_raw",
+        output_col="factor_processed",
+        steps=("size_neutralize",),
+    )
+
+    assert result["factor_processed"].abs().max() < 1e-12
+
+
 def test_build_factor_panel_artifact_writes_partitioned_output_and_manifest(tmp_path: Path):
     config = _make_config(tmp_path)
     config.ensure_directories()
@@ -109,8 +153,8 @@ def test_build_factor_panel_artifact_writes_partitioned_output_and_manifest(tmp_
 
     snapshot_df = pd.DataFrame(
         [
-            {"rebalance_date": pd.Timestamp("2024-01-31"), "trade_execution_date": pd.Timestamp("2024-02-01"), "ts_code": "AAA", "is_eligible": True, "exclude_reason": "", "year": 2024, "month": 1, "adj_close": 10.0, "total_mv": 100.0, "pb": 2.0},
-            {"rebalance_date": pd.Timestamp("2024-01-31"), "trade_execution_date": pd.Timestamp("2024-02-01"), "ts_code": "BBB", "is_eligible": True, "exclude_reason": "", "year": 2024, "month": 1, "adj_close": 20.0, "total_mv": 400.0, "pb": 4.0},
+            {"rebalance_date": pd.Timestamp("2024-01-31"), "trade_execution_date": pd.Timestamp("2024-02-01"), "ts_code": "AAA", "is_eligible": True, "exclude_reason": "", "year": 2024, "month": 1, "adj_close": 10.0, "total_mv": 100.0, "pb": 2.0, "market": "main_board"},
+            {"rebalance_date": pd.Timestamp("2024-01-31"), "trade_execution_date": pd.Timestamp("2024-02-01"), "ts_code": "BBB", "is_eligible": True, "exclude_reason": "", "year": 2024, "month": 1, "adj_close": 20.0, "total_mv": 400.0, "pb": 4.0, "market": "main_board"},
         ]
     )
 
@@ -129,3 +173,4 @@ def test_build_factor_panel_artifact_writes_partitioned_output_and_manifest(tmp_
 
     manifest = json.loads(manifest_file.read_text(encoding="utf-8"))
     assert manifest["factor_names"] == ["size", "book_to_market"]
+    assert manifest["preprocess_profiles"]["book_to_market"] == ["winsorize", "industry_neutralize", "size_neutralize", "zscore"]

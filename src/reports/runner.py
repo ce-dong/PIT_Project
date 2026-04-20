@@ -24,6 +24,12 @@ def _read_parquet(path: Path) -> pd.DataFrame:
     return pd.read_parquet(path)
 
 
+def _read_optional_parquet(path: Path) -> pd.DataFrame:
+    if not path.exists():
+        return pd.DataFrame()
+    return pd.read_parquet(path)
+
+
 def build_research_report(
     config: AppConfig,
     run_config: ResearchRunConfig,
@@ -39,15 +45,19 @@ def build_research_report(
     if not manifest_path.exists():
         raise FileNotFoundError(f"Required evaluation manifest is missing: {manifest_path}")
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    factor_manifest_path = run_paths.stage_roots["features"] / "factor_panel_manifest.json"
+    factor_manifest = json.loads(factor_manifest_path.read_text(encoding="utf-8")) if factor_manifest_path.exists() else {}
 
     payload = {
         "manifest": manifest,
+        "factor_manifest": factor_manifest,
         "evaluation_summary": _read_parquet(evaluation_root / "evaluation_summary.parquet"),
         "fama_macbeth_summary": _read_parquet(evaluation_root / "fama_macbeth_summary.parquet"),
         "factor_correlation_summary": _read_parquet(evaluation_root / "factor_correlation_summary.parquet"),
         "factor_correlation_matrix": _read_parquet(evaluation_root / "factor_correlation_matrix.parquet"),
         "redundancy_summary": _read_parquet(evaluation_root / "redundancy_summary.parquet"),
         "robustness_summary": _read_parquet(evaluation_root / "robustness_summary.parquet"),
+        "subperiod_summary": _read_optional_parquet(evaluation_root / "subperiod_summary.parquet"),
     }
     context = ReportContext(
         experiment_name=run_config.experiment_name,

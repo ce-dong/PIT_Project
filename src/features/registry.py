@@ -7,6 +7,8 @@ from typing import Iterable
 
 FAMILY_ORDER = ("valuation", "momentum", "risk_liquidity", "quality", "investment")
 _NAME_PATTERN = re.compile(r"^[a-z][a-z0-9_]*$")
+DEFAULT_PREPROCESS = ("winsorize", "industry_neutralize", "size_neutralize", "zscore")
+SIZE_FACTOR_PREPROCESS = ("winsorize", "industry_neutralize", "zscore")
 
 
 def _normalize_tokens(values: Iterable[str]) -> tuple[str, ...]:
@@ -123,7 +125,7 @@ VALUATION_FACTOR_SPECS = (
         formula="log(total_mv)",
         inputs=("monthly_snapshot_base.total_mv",),
         lag_rule="Use the latest market snapshot with trade_date <= rebalance_date.",
-        preprocess=("winsorize", "zscore"),
+        preprocess=SIZE_FACTOR_PREPROCESS,
         output_field="factor_size",
     ),
     FactorSpec(
@@ -133,7 +135,7 @@ VALUATION_FACTOR_SPECS = (
         formula="1 / pb",
         inputs=("monthly_snapshot_base.pb",),
         lag_rule="Use the latest market snapshot with trade_date <= rebalance_date.",
-        preprocess=("winsorize", "zscore"),
+        preprocess=DEFAULT_PREPROCESS,
         output_field="factor_book_to_market",
     ),
     FactorSpec(
@@ -143,7 +145,7 @@ VALUATION_FACTOR_SPECS = (
         formula="1 / pe_ttm",
         inputs=("monthly_snapshot_base.pe_ttm",),
         lag_rule="Use the latest market snapshot with trade_date <= rebalance_date.",
-        preprocess=("winsorize", "zscore"),
+        preprocess=DEFAULT_PREPROCESS,
         output_field="factor_earnings_to_price",
     ),
     FactorSpec(
@@ -153,7 +155,7 @@ VALUATION_FACTOR_SPECS = (
         formula="1 / ps_ttm",
         inputs=("monthly_snapshot_base.ps_ttm",),
         lag_rule="Use the latest market snapshot with trade_date <= rebalance_date.",
-        preprocess=("winsorize", "zscore"),
+        preprocess=DEFAULT_PREPROCESS,
         output_field="factor_sales_to_price",
     ),
     FactorSpec(
@@ -163,7 +165,7 @@ VALUATION_FACTOR_SPECS = (
         formula="cf_n_cashflow_act / total_mv",
         inputs=("monthly_snapshot_base.cf_n_cashflow_act", "monthly_snapshot_base.total_mv"),
         lag_rule="Use the latest cashflow snapshot with cf_tradable_date <= trade_execution_date and scale by market snapshot at rebalance.",
-        preprocess=("winsorize", "zscore"),
+        preprocess=DEFAULT_PREPROCESS,
         output_field="factor_cashflow_to_price",
     ),
 )
@@ -176,7 +178,7 @@ MOMENTUM_FACTOR_SPECS = (
         formula="adj_return[t-12m, t-1m]",
         inputs=("adjusted_price_panel.adj_close", "calendar_table.trade_date"),
         lag_rule="Use only prices with trade_date <= rebalance_date and exclude the most recent one-month window.",
-        preprocess=("winsorize", "zscore"),
+        preprocess=DEFAULT_PREPROCESS,
         output_field="factor_momentum_12_1",
     ),
     FactorSpec(
@@ -186,7 +188,7 @@ MOMENTUM_FACTOR_SPECS = (
         formula="adj_return[t-6m, t-1m]",
         inputs=("adjusted_price_panel.adj_close", "calendar_table.trade_date"),
         lag_rule="Use only prices with trade_date <= rebalance_date and exclude the most recent one-month window.",
-        preprocess=("winsorize", "zscore"),
+        preprocess=DEFAULT_PREPROCESS,
         output_field="factor_momentum_6_1",
     ),
     FactorSpec(
@@ -196,7 +198,7 @@ MOMENTUM_FACTOR_SPECS = (
         formula="adj_return[t-3m, t-1m]",
         inputs=("adjusted_price_panel.adj_close", "calendar_table.trade_date"),
         lag_rule="Use only prices with trade_date <= rebalance_date and exclude the most recent one-month window.",
-        preprocess=("winsorize", "zscore"),
+        preprocess=DEFAULT_PREPROCESS,
         output_field="factor_momentum_3_1",
     ),
     FactorSpec(
@@ -206,7 +208,7 @@ MOMENTUM_FACTOR_SPECS = (
         formula="-adj_return[t-1m, t]",
         inputs=("adjusted_price_panel.adj_close", "calendar_table.trade_date"),
         lag_rule="Use only prices with trade_date <= rebalance_date for the trailing one-month window.",
-        preprocess=("winsorize", "zscore"),
+        preprocess=DEFAULT_PREPROCESS,
         output_field="factor_reversal_1m",
     ),
 )
@@ -219,7 +221,7 @@ RISK_LIQUIDITY_FACTOR_SPECS = (
         formula="cov(ret_i, ret_mkt) / var(ret_mkt)",
         inputs=("adjusted_price_panel.adj_close", "calendar_table.trade_date"),
         lag_rule="Use only prices with trade_date <= rebalance_date over the trailing 12-month estimation window.",
-        preprocess=("winsorize", "zscore"),
+        preprocess=DEFAULT_PREPROCESS,
         output_field="factor_beta",
     ),
     FactorSpec(
@@ -229,7 +231,7 @@ RISK_LIQUIDITY_FACTOR_SPECS = (
         formula="std(daily_adj_returns)",
         inputs=("adjusted_price_panel.adj_close", "calendar_table.trade_date"),
         lag_rule="Use only prices with trade_date <= rebalance_date over the trailing estimation window.",
-        preprocess=("winsorize", "zscore"),
+        preprocess=DEFAULT_PREPROCESS,
         output_field="factor_volatility",
     ),
     FactorSpec(
@@ -239,7 +241,7 @@ RISK_LIQUIDITY_FACTOR_SPECS = (
         formula="mean(turnover_rate)",
         inputs=("monthly_snapshot_base.turnover_rate", "monthly_snapshot_base.turnover_rate_f"),
         lag_rule="Use the latest daily_basic snapshot with trade_date <= rebalance_date; extend later to rolling aggregation if required.",
-        preprocess=("winsorize", "zscore"),
+        preprocess=DEFAULT_PREPROCESS,
         output_field="factor_turnover",
     ),
     FactorSpec(
@@ -249,7 +251,7 @@ RISK_LIQUIDITY_FACTOR_SPECS = (
         formula="mean(abs(ret_d) / amount_d)",
         inputs=("adjusted_price_panel.adj_close", "monthly_snapshot_base.amount"),
         lag_rule="Use only prices and traded amount available on or before rebalance_date over the trailing estimation window.",
-        preprocess=("winsorize", "zscore"),
+        preprocess=DEFAULT_PREPROCESS,
         output_field="factor_amihud_illiquidity",
     ),
     FactorSpec(
@@ -259,7 +261,7 @@ RISK_LIQUIDITY_FACTOR_SPECS = (
         formula="std(ret_i - alpha - beta * ret_mkt)",
         inputs=("adjusted_price_panel.adj_close", "calendar_table.trade_date"),
         lag_rule="Use only prices with trade_date <= rebalance_date over the trailing one-year estimation window.",
-        preprocess=("winsorize", "zscore"),
+        preprocess=DEFAULT_PREPROCESS,
         output_field="factor_idiosyncratic_volatility",
     ),
 )
@@ -272,7 +274,7 @@ QUALITY_FACTOR_SPECS = (
         formula="fi_roe",
         inputs=("monthly_snapshot_base.fi_roe",),
         lag_rule="Use the latest fina_indicator snapshot with fi_tradable_date <= trade_execution_date.",
-        preprocess=("winsorize", "zscore"),
+        preprocess=DEFAULT_PREPROCESS,
         output_field="factor_roe",
     ),
     FactorSpec(
@@ -282,7 +284,7 @@ QUALITY_FACTOR_SPECS = (
         formula="fi_roa",
         inputs=("monthly_snapshot_base.fi_roa",),
         lag_rule="Use the latest fina_indicator snapshot with fi_tradable_date <= trade_execution_date.",
-        preprocess=("winsorize", "zscore"),
+        preprocess=DEFAULT_PREPROCESS,
         output_field="factor_roa",
     ),
     FactorSpec(
@@ -296,7 +298,7 @@ QUALITY_FACTOR_SPECS = (
             "monthly_snapshot_base.bs_total_assets",
         ),
         lag_rule="Use income and balance-sheet snapshots whose tradable_date is <= trade_execution_date.",
-        preprocess=("winsorize", "zscore"),
+        preprocess=DEFAULT_PREPROCESS,
         output_field="factor_gross_profitability",
     ),
     FactorSpec(
@@ -306,7 +308,7 @@ QUALITY_FACTOR_SPECS = (
         formula="fi_gross_margin",
         inputs=("monthly_snapshot_base.fi_gross_margin",),
         lag_rule="Use the latest fina_indicator snapshot with fi_tradable_date <= trade_execution_date.",
-        preprocess=("winsorize", "zscore"),
+        preprocess=DEFAULT_PREPROCESS,
         output_field="factor_gross_margin",
     ),
     FactorSpec(
@@ -316,7 +318,7 @@ QUALITY_FACTOR_SPECS = (
         formula="cf_n_cashflow_act / bs_total_assets",
         inputs=("monthly_snapshot_base.cf_n_cashflow_act", "monthly_snapshot_base.bs_total_assets"),
         lag_rule="Use cashflow and balance-sheet snapshots whose tradable_date is <= trade_execution_date.",
-        preprocess=("winsorize", "zscore"),
+        preprocess=DEFAULT_PREPROCESS,
         output_field="factor_operating_cash_flow_to_assets",
     ),
     FactorSpec(
@@ -330,7 +332,7 @@ QUALITY_FACTOR_SPECS = (
             "monthly_snapshot_base.bs_total_assets",
         ),
         lag_rule="Use income, cashflow, and balance-sheet snapshots whose tradable_date is <= trade_execution_date.",
-        preprocess=("winsorize", "zscore"),
+        preprocess=DEFAULT_PREPROCESS,
         output_field="factor_accruals",
     ),
 )
@@ -343,7 +345,7 @@ INVESTMENT_FACTOR_SPECS = (
         formula="growth(bs_total_assets, 12m)",
         inputs=("monthly_snapshot_base.bs_total_assets", "monthly_snapshot_base.bs_report_period"),
         lag_rule="Use balance-sheet snapshots whose tradable_date is <= trade_execution_date and compare against the prior annual period.",
-        preprocess=("winsorize", "zscore"),
+        preprocess=DEFAULT_PREPROCESS,
         output_field="factor_asset_growth",
     ),
     FactorSpec(
@@ -353,7 +355,7 @@ INVESTMENT_FACTOR_SPECS = (
         formula="growth(bs_inventories, 12m)",
         inputs=("monthly_snapshot_base.bs_inventories", "monthly_snapshot_base.bs_report_period"),
         lag_rule="Use balance-sheet snapshots whose tradable_date is <= trade_execution_date and compare against the prior annual period.",
-        preprocess=("winsorize", "zscore"),
+        preprocess=DEFAULT_PREPROCESS,
         output_field="factor_inventory_growth",
     ),
     FactorSpec(
@@ -363,7 +365,7 @@ INVESTMENT_FACTOR_SPECS = (
         formula="bs_total_liab / bs_total_assets",
         inputs=("monthly_snapshot_base.bs_total_liab", "monthly_snapshot_base.bs_total_assets"),
         lag_rule="Use the latest balance-sheet snapshot with bs_tradable_date <= trade_execution_date.",
-        preprocess=("winsorize", "zscore"),
+        preprocess=DEFAULT_PREPROCESS,
         output_field="factor_leverage",
     ),
     FactorSpec(
@@ -377,7 +379,7 @@ INVESTMENT_FACTOR_SPECS = (
             "monthly_snapshot_base.bs_total_liab",
         ),
         lag_rule="Use the latest balance-sheet snapshot with bs_tradable_date <= trade_execution_date.",
-        preprocess=("winsorize", "zscore"),
+        preprocess=DEFAULT_PREPROCESS,
         output_field="factor_net_operating_assets",
     ),
 )
